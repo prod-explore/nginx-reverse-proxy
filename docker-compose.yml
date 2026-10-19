@@ -1,0 +1,62 @@
+# nginx terminates TLS for every site; certbot issues and renews the certificates.
+# Add the networks of the backends in docker-compose.override.yml (see the example).
+
+name: proxy
+
+services:
+  nginx:
+    image: nginx:1.28-alpine
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./sites:/etc/nginx/sites:ro
+      - ./certs/conf:/etc/letsencrypt:ro
+      - ./certs/www:/var/www/certbot:ro
+    # Reload every 6 h so that renewed certificates are picked up without a restart.
+    command: >-
+      /bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done &
+      exec nginx -g "daemon off;"'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    # Hardening: nothing writable but tmpfs, no extra privileges, only the capabilities nginx needs.
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /run
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE, CHOWN, SETUID, SETGID]
+    mem_limit: 256m
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    restart: unless-stopped
+    # Checks twice a day; certbot only renews certificates that expire within 30 days.
+    entrypoint: >-
+      /bin/sh -c 'trap exit TERM;
+      while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
+    volumes:
+      - ./certs/conf:/etc/letsencrypt
+      - ./certs/www:/var/www/certbot
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

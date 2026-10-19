@@ -1,0 +1,5 @@
+# Your sites, certificates and secrets stay on the server.
+/sites/*.conf
+/certs/
+.env
+docker-compose.override.yml

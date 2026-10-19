@@ -1,0 +1,47 @@
+# STEP 2, variant: a frontend and an API in different containers, with a stricter
+# limit on the login endpoint. Same as site.conf.example, with more locations.
+#
+# The site. Replace every "shop.example.com" with your domain and
+# "app:3000" with <container name>:<port> of the backend (reachable from one of the
+# networks listed in docker-compose.override.yml).
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name shop.example.com;
+
+    include snippets/acme-challenge.conf;
+
+    location /api/ {
+        set $api http://shop-api:3000;
+        proxy_pass $api;
+
+        include snippets/proxy-headers.conf;
+        include snippets/proxy-timeouts.conf;
+
+        limit_req  zone=perip burst=60 nodelay;
+        limit_conn connperip 50;
+    }
+
+    # Brute-force protection: 5 requests per minute per address (zone "login").
+    location = /api/login {
+        set $api http://shop-api:3000;
+        proxy_pass $api;
+
+        include snippets/proxy-headers.conf;
+        include snippets/proxy-timeouts.conf;
+
+        limit_req zone=login burst=5 nodelay;
+    }
+
+    location / {
+        set $web http://shop-web:80;
+        proxy_pass $web;
+
+        include snippets/proxy-headers.conf;
+        include snippets/proxy-timeouts.conf;
+
+        limit_req  zone=perip burst=60 nodelay;
+        limit_conn connperip 50;
+    }
+}

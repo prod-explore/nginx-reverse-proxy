@@ -1,0 +1,25 @@
+# Copy to docker-compose.override.yml (gitignored) and list the networks of your backends.
+# Each backend stays on its own network; the proxy joins them, so two backends never see each other.
+#
+# Create a network once with:   docker network create app1_net
+# and attach the backend to it in its own compose file:
+#
+#   services:
+#     app:
+#       networks: [app1_net]
+#   networks:
+#     app1_net:
+#       external: true
+
+services:
+  nginx:
+    networks:
+      - default
+      - app1_net
+      - app2_net
+
+networks:
+  app1_net:
+    external: true
+  app2_net:
+    external: true
