@@ -74,6 +74,7 @@ certs/                    certificates and ACME webroot (gitignored, created on 
 scripts/check.sh          runs `nginx -t` on every example in the proxy's image
 scripts/smoke-test.sh     starts the proxy with the examples and checks what it does
 scripts/fixtures.sh       throwaway sites and certificates, shared by the two scripts
+SECURITY.md               how to report a vulnerability, and what is in scope
 ```
 
 Your own sites and certificates never enter the repository: `sites/*.conf`, `certs/`, `.env` and `docker-compose.override.yml` are gitignored.
