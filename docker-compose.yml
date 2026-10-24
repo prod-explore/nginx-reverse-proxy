@@ -44,10 +44,10 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   certbot:
-    image: certbot/certbot
+    image: certbot/certbot:v5.8.0
     container_name: certbot
     restart: unless-stopped
-    # Checks twice a day; certbot only renews certificates that expire within 30 days.
+    # Checks twice a day; certbot renews only the certificates that are close to expiry.
     entrypoint: >-
       /bin/sh -c 'trap exit TERM;
       while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
