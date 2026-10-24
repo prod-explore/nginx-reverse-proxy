@@ -1,6 +1,6 @@
 # nginx-reverse-proxy
 
-A small, hardened reverse proxy for a Docker host: **one nginx with automatic HTTPS (certbot) in front of any number of containers**, each on its own network. No generator, no labels, no control plane: a site is a plain nginx file copied from `examples/`, and CI starts the real proxy and checks 25 of the behaviours listed under [What is hardened](#what-is-hardened-and-why).
+A small, hardened reverse proxy for a Docker host: **one nginx with automatic HTTPS (certbot) in front of any number of containers**, each on its own network. No generator, no labels, no control plane: a site is a plain nginx file copied from `examples/`, and CI starts the real proxy and runs 25 checks against what [is hardened](#what-is-hardened-and-why).
 
 ```
 Internet ─▶ nginx :80/:443 ─┬─▶ app1_net ─▶ app1      unknown hosts: connection closed, no certificate shown
