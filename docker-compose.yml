@@ -5,7 +5,7 @@ name: proxy
 
 services:
   nginx:
-    image: nginx:1.28-alpine
+    image: nginx:1.29-alpine
     container_name: nginx-proxy
     restart: unless-stopped
     ports:
