@@ -98,6 +98,17 @@ Your own sites and certificates never enter the repository: `sites/*.conf`, `cer
 
 nginx listens on IPv4 only inside the container: Docker forwards the host's IPv6 port to it anyway, and a `[::]` listener would stop nginx from starting on a kernel without IPv6.
 
+### Known limits
+
+Choices that cost something, so you can decide whether they cost too much for you.
+
+- **IPv6 clients look alike.** With Docker's default networking an IPv6 connection reaches nginx through `docker-proxy`, so nginx sees the bridge gateway's address, not the client's. The per-IP limits are then shared by every IPv6 client and `X-Forwarded-For` carries the gateway address. If the host has public IPv6, enable it on the proxy network (`enable_ipv6`, with ip6tables) before adding a `[::]` listener; if you only serve IPv4, nothing changes.
+- **`gzip_proxied any` over TLS.** Compressing a page that repeats a secret (a CSRF token) next to input an attacker can influence is the setup of the BREACH attack. Turn gzip off for `text/html` on a site that has such pages, or use per-request CSRF tokens.
+- **No keepalive to backends.** Upstreams are resolved per request (see above), which rules out nginx's connection pool: each proxied request opens a new connection on the Docker network. That is cheap there, and it is what lets nginx start before the backends do.
+- **Fixed container names.** `nginx-proxy` and `certbot` collide with another project of the same names on one host; rename them in `docker-compose.yml` if you run two.
+- **The login limit is per IP.** Many users behind one address (an office, a mobile carrier's NAT) share the 5 requests a minute; tune the `login` zone to your users.
+- **The certbot container is not as locked down as nginx.** It keeps the default capabilities and a writable filesystem because it writes the certificates. Tightening it is worth doing once you have watched a real renewal on your host.
+
 ### Rate limiting a login endpoint
 
 `nginx.conf` defines a stricter `login` zone (5 requests per minute per IP) next to the general `perip` zone. `examples/site-frontend-and-api.conf.example` applies it to `/api/login` with a burst of 5: the 7th quick attempt gets `429`.
