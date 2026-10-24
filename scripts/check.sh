@@ -21,7 +21,6 @@ while read -r domain; do
   mkdir -p "$work/certs/live/$domain"
   openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=$domain" \
     -keyout "$work/certs/live/$domain/privkey.pem" -out "$work/certs/live/$domain/fullchain.pem" 2>/dev/null
-  cp "$work/certs/live/$domain/fullchain.pem" "$work/certs/live/$domain/chain.pem"
 done < <(grep -hoE 'live/[a-z0-9.-]+/fullchain' examples/*.conf.example | cut -d/ -f2 | sort -u)
 
 # nginx runs as a different uid in the container; make the throwaway tree readable.

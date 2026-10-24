@@ -72,7 +72,7 @@ Your own sites, certificates and `.env` never enter the repository: `sites/*.con
 | Area | What | Why |
 |---|---|---|
 | Unknown hosts | Default server closes the connection (`444`) and refuses the TLS handshake (`ssl_reject_handshake`) | Scanners hitting the bare IP learn nothing, and no certificate (so no hostname of yours) is disclosed |
-| TLS | TLS 1.2/1.3, Mozilla "intermediate" ciphers, session tickets off, OCSP stapling | Forward secrecy; ticket keys are not rotated by nginx, so tickets would undo it |
+| TLS | TLS 1.2/1.3, the Mozilla "intermediate" ECDHE ciphers (DHE suites left out, so no dhparam file to manage), session tickets off | Forward secrecy; nginx never rotates the ticket key while it runs, so tickets would weaken it. No OCSP stapling: Let's Encrypt shut down OCSP in 2025 |
 | Headers | HSTS, `nosniff`, `Referrer-Policy`, `X-Frame-Options`, no `Server` version, no `X-Powered-By` | Cheap defence in depth. CSP is left to the application, which knows what it loads |
 | Client address | `X-Forwarded-For` is *replaced* with the real peer address, not appended to | A client cannot forge its address to a backend that uses `trust proxy 1` or per-IP limits |
 | Abuse | Per-IP request rate (20 r/s, burst 60) and connection limits, answered with `429` | Cheap floods stop at the proxy; limits are higher for streaming sites |

@@ -21,9 +21,8 @@ server {
     http2 on;
     server_name stream.example.com;
 
-    ssl_certificate         /etc/letsencrypt/live/stream.example.com/fullchain.pem;
-    ssl_certificate_key     /etc/letsencrypt/live/stream.example.com/privkey.pem;
-    ssl_trusted_certificate /etc/letsencrypt/live/stream.example.com/chain.pem;
+    ssl_certificate     /etc/letsencrypt/live/stream.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/stream.example.com/privkey.pem;
 
     include snippets/security-headers.conf;
 
