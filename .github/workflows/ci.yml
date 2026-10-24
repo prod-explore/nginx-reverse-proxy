@@ -13,7 +13,7 @@ jobs:
     name: nginx -t, smoke test and shellcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: ShellCheck
         run: shellcheck -x scripts/*.sh
       - name: Validate the nginx configuration
