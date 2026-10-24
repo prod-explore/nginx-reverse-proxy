@@ -2,7 +2,7 @@
 # long timeouts. Same as site.conf.example except the two lines marked (*).
 #
 # The site. Replace every "stream.example.com" with your domain and
-# "assistant:8080" with <container name>:<port> of the backend (reachable from one of the
+# "stream-app:8080" with <container name>:<port> of the backend (reachable from one of the
 # networks listed in docker-compose.override.yml).
 
 server {
@@ -36,7 +36,7 @@ server {
     location / {
         # A variable makes nginx resolve the name per request: the backend can restart,
         # or not exist yet, without breaking nginx.
-        set $upstream http://assistant:8080;
+        set $upstream http://stream-app:8080;
         proxy_pass $upstream;
 
         include snippets/proxy-headers.conf;
