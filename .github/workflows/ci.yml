@@ -17,6 +17,5 @@ jobs:
         run: scripts/check.sh
       - name: Validate the compose files
         run: |
-          cp .env.example .env
           docker compose config -q
           docker compose -f docker-compose.yml -f docker-compose.override.example.yml config -q

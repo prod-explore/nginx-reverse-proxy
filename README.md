@@ -13,7 +13,6 @@ I run this on a Raspberry Pi in front of a handful of unrelated projects.
 ## Quick start
 
 ```bash
-cp .env.example .env                                                  # nothing secret, but yours
 cp docker-compose.override.example.yml docker-compose.override.yml    # list your backends' networks
 docker compose up -d
 ```
@@ -65,7 +64,7 @@ certs/                    certificates and ACME webroot (gitignored)
 scripts/check.sh          validates the whole configuration
 ```
 
-Your own sites, certificates and `.env` never enter the repository: `sites/*.conf`, `certs/`, `.env` and `docker-compose.override.yml` are gitignored.
+Your own sites and certificates never enter the repository: `sites/*.conf`, `certs/`, `.env` and `docker-compose.override.yml` are gitignored.
 
 ## What is hardened, and why
 
