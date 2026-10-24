@@ -10,6 +10,10 @@ updates:
     groups:
       images-minor-and-patch:
         update-types: [minor, patch]
+    # nginx's even minor versions (1.28) are the stable branch, the odd ones (1.29) are mainline: stay on stable, patches only.
+    ignore:
+      - dependency-name: nginx
+        update-types: ["version-update:semver-minor"]
     commit-message:
       prefix: "chore(deps)"
 
