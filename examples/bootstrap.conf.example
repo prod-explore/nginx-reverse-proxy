@@ -3,7 +3,6 @@
 # then replace this file with site.conf.example.
 server {
     listen 80;
-    listen [::]:80;
     server_name app.example.com;
 
     include snippets/acme-challenge.conf;

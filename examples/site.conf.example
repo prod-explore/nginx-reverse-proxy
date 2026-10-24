@@ -4,7 +4,6 @@
 
 server {
     listen 80;
-    listen [::]:80;
     server_name app.example.com;
 
     include snippets/acme-challenge.conf;
@@ -16,7 +15,6 @@ server {
 
 server {
     listen 443 ssl;
-    listen [::]:443 ssl;
     http2 on;
     server_name app.example.com;
 
