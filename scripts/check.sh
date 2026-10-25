@@ -9,6 +9,7 @@ cd "$(dirname "$0")/.."
 # shellcheck source=scripts/fixtures.sh
 . scripts/fixtures.sh
 
+# The image docker-compose.yml runs, read from the file so that the two cannot drift.
 image=$(sed -n 's|^[[:space:]]*image: \(nginx:[^[:space:]]*\)$|\1|p' docker-compose.yml | head -1)
 : "${image:?could not read the nginx image from docker-compose.yml}"
 

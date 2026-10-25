@@ -19,6 +19,8 @@ cd "$(dirname "$0")/.."
 image=$(sed -n 's|^[[:space:]]*image: \(nginx:[^[:space:]]*\)$|\1|p' docker-compose.yml | head -1)
 : "${image:?could not read the nginx image from docker-compose.yml}"
 
+# A compose project of its own, so the test never touches the containers or
+# networks of a proxy already running on the host.
 project="nrp-smoke-$$"
 work=$(mktemp -d)
 compose() { docker compose -p "$project" -f docker-compose.yml -f "$work/compose.yml" "$@"; }
@@ -32,6 +34,8 @@ make_fixtures "$work"
 mkdir -p "$work/webroot/.well-known/acme-challenge"
 echo "acme-token-ok" > "$work/webroot/.well-known/acme-challenge/token"
 
+# The stub backend listens on every port the examples use. Its X-Powered-By
+# header gives the proxy something to hide.
 cat > "$work/backend.conf" <<'EOF'
 server {
     listen 80;
@@ -45,7 +49,9 @@ server {
 EOF
 
 # Same service as in production, except: sites and certificates come from the
-# throwaway tree, ports go to random loopback ports, and no fixed container name.
+# throwaway tree, ports go to random loopback ports (!override replaces the
+# production list instead of adding to it), the container name is per run, and
+# a 1 s healthcheck lets --wait return quickly.
 cat > "$work/compose.yml" <<EOF
 services:
   nginx:
@@ -79,7 +85,8 @@ ok()   { passed=$((passed + 1)); echo "ok   $1"; }
 fail() { failed=$((failed + 1)); echo "FAIL $1"; [ -n "${2:-}" ] && printf '     %s\n' "$2"; }
 # check NAME HAYSTACK NEEDLE: passes if NEEDLE occurs in HAYSTACK.
 check()  { if grep -qF -- "$3" <<<"$2"; then ok "$1"; else fail "$1" "expected '$3' in: $2"; fi; }
-# refute NAME HAYSTACK NEEDLE: passes if NEEDLE does not occur in HAYSTACK.
+# refute NAME HAYSTACK NEEDLE: passes if NEEDLE does not occur in HAYSTACK,
+# ignoring case.
 refute() { if grep -qiF -- "$3" <<<"$2"; then fail "$1" "unexpected '$3' in: $2"; else ok "$1"; fi; }
 
 # HTTP or HTTPS request to HOST, sent to the proxy whatever HOST resolves to.
