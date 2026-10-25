@@ -1,5 +1,5 @@
-# Weekly update PRs for the two images in docker-compose.yml (nginx, certbot)
-# and for the actions in .github/workflows. CI validates every one of them.
+# Weekly update PRs for the images in docker-compose.yml and the actions in
+# .github/workflows. CI runs on every one of them.
 version: 2
 updates:
   - package-ecosystem: docker-compose
@@ -10,7 +10,9 @@ updates:
     groups:
       images-minor-and-patch:
         update-types: [minor, patch]
-    # nginx's even minor versions (1.28) are the stable branch, the odd ones (1.29) are mainline: stay on stable, patches only.
+    # nginx's even minor versions are its stable branch and the odd ones its
+    # mainline, so a minor bump would leave stable. Moving to the next stable
+    # branch is a manual change.
     ignore:
       - dependency-name: nginx
         update-types: ["version-update:semver-minor"]

@@ -18,7 +18,8 @@ services:
       - ./sites:/etc/nginx/sites:ro
       - ./certs/conf:/etc/letsencrypt:ro
       - ./certs/www:/var/www/certbot:ro
-    # Reload every 6 h so that renewed certificates are picked up without a restart.
+    # Reload every 6 h so that renewed certificates are picked up without a
+    # restart. $$ is compose's escape for a literal $.
     command: >-
       /bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done &
       exec nginx -g "daemon off;"'
@@ -27,7 +28,10 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
-    # Hardening: nothing writable but tmpfs, no extra privileges, only the capabilities nginx needs.
+    # Hardening: nothing writable but tmpfs, no extra privileges, only the
+    # capabilities nginx needs: NET_BIND_SERVICE for ports 80 and 443, SETUID and
+    # SETGID for the master to start its workers as the nginx user, CHOWN for the
+    # master to hand its temp directories to that user.
     read_only: true
     tmpfs:
       - /var/cache/nginx
@@ -47,7 +51,9 @@ services:
     image: certbot/certbot:v5.8.0
     container_name: certbot
     restart: unless-stopped
-    # Checks twice a day; certbot renews only the certificates that are close to expiry.
+    # Checks twice a day; certbot renews only the certificates that are close to
+    # expiry. Sleeping in the background and waiting lets the TERM trap run at
+    # once on `docker stop`, instead of after the sleep ends.
     entrypoint: >-
       /bin/sh -c 'trap exit TERM;
       while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
