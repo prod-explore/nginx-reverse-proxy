@@ -4,7 +4,7 @@
 
 nginx and certbot in Docker Compose, for serving several containerized web apps from one host over HTTPS. Each app stays on its own Docker network and publishes no ports. nginx joins those networks, terminates TLS with Let's Encrypt certificates and routes by host name. On every push to `main` and every pull request, CI starts the proxy and checks its behaviour from the outside.
 
-[[Q1: Where does this run today, and since when? One sentence, e.g. "Runs on my Raspberry Pi in front of N apps", or remove this line.]]
+Runs on my Raspberry Pi 5 since September 2025, in front of all my self-hosted apps.
 
 ## What it does
 
@@ -52,7 +52,7 @@ The script starts the proxy from `docker-compose.yml` with every site in [`examp
 
 ## Deploy on a server
 
-You need a Linux host with IPv6 enabled in the kernel (the default; the proxy's network uses IPv6, and the proxy does not start without it), Docker Engine 27 or newer and Compose v2, ports 80 and 443 reachable from the internet, and a DNS record for your domain that points to the host. IPv6 needs a few host-side steps, listed in [operations](docs/operations.md#ipv6). [[Q2: Which architectures have you run it on (amd64, arm64 / Raspberry Pi)? I will state only what you confirm.]]
+You need a Linux host with IPv6 enabled in the kernel (the default; the proxy's network uses IPv6, and the proxy does not start without it), Docker Engine 27 or newer and Compose v2, ports 80 and 443 reachable from the internet, and a DNS record for your domain that points to the host. IPv6 needs a few host-side steps, listed in [operations](docs/operations.md#ipv6). It runs in production on arm64 (Raspberry Pi 5).
 
 **1. Clone and set two variables.** The rest of the commands use them.
 
