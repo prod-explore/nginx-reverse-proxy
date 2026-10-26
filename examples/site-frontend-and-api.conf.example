@@ -50,8 +50,9 @@ server {
         limit_conn connperip 50;
     }
 
-    # Brute-force protection: 5 requests per minute per address (zone "login"),
-    # a burst of 5 answered at once, then 429. An exact match wins over /api/.
+    # Brute-force protection: 5 requests per minute per client (zone "login": an
+    # IPv4 address or an IPv6 /64), a burst of 5 answered at once, then 429. An
+    # exact match wins over /api/.
     # No limit_conn here: at 5 requests a minute, a cap on parallel connections
     # adds nothing.
     location = /api/login {
