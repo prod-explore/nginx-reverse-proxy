@@ -32,8 +32,9 @@ ok   the Forwarded header is dropped
 ok   the Proxy header (httpoxy) is dropped
 == Rate limiting
 ok   login allows 1 + burst of 5, then answers 429
-== Reload (the step the README runs after adding a site)
-ok   nginx -t && nginx -s reload works in the read-only container
+== Reload (scripts/reload.sh, the step after every change)
+ok   reload.sh tests and reloads the read-only container
+ok   a replaced nginx.conf takes effect on reload
 ```
 
 ## Try it locally
@@ -87,7 +88,7 @@ docker compose up -d
 
 ```sh
 sed "s/app.example.com/$DOMAIN/g" examples/bootstrap.conf.example > "sites/$DOMAIN.conf"
-docker compose exec nginx sh -c 'nginx -t && nginx -s reload'
+scripts/reload.sh
 docker compose run --rm --entrypoint certbot certbot certonly --webroot -w /var/www/certbot \
   -d "$DOMAIN" --email "$EMAIL" --agree-tos --no-eff-email
 ```
@@ -96,7 +97,7 @@ docker compose run --rm --entrypoint certbot certbot certonly --webroot -w /var/
 
 ```sh
 sed -e "s/app.example.com/$DOMAIN/g" -e "s/app:3000/$BACKEND/" examples/site.conf.example > "sites/$DOMAIN.conf"
-docker compose exec nginx sh -c 'nginx -t && nginx -s reload'
+scripts/reload.sh
 curl -I "https://$DOMAIN"
 ```
 
@@ -132,7 +133,7 @@ flowchart LR
 | [`examples/`](examples) | site templates; CI validates and runs every one of them |
 | `sites/*.conf` | your sites; gitignored, they stay on the server |
 | `certs/` | Let's Encrypt state and the ACME webroot; gitignored |
-| [`scripts/`](scripts) | `check.sh` (`nginx -t` on everything) and `smoke-test.sh` |
+| [`scripts/`](scripts) | `reload.sh` (test, then reload the running proxy), `check.sh` (`nginx -t` on everything) and `smoke-test.sh` |
 
 One property was a requirement from the start: **nginx starts even when some backends are not running.** Each site passes its backend to `proxy_pass` through a variable, and `nginx.conf` points the resolver at Docker's embedded DNS (`127.0.0.11`). nginx then looks the name up when a request comes in (answers cached for 30 seconds) instead of once at startup. A missing backend fails its own site, not the start of the proxy. The cost: no keepalive connections to backends, and `proxy_pass` passes the request URI unchanged, so stripping a path prefix needs a `rewrite`.
 
@@ -162,7 +163,7 @@ There is no web application firewall, no authentication layer and no protection 
 | Event | What happens |
 | --- | --- |
 | A backend stops or is removed | Its site answers `502` or `504`; other sites are unaffected. It recovers without a reload when the backend is back. |
-| A site file has an error, such as a certificate path that does not exist | `nginx -t` fails and nothing is reloaded; the running configuration keeps serving, and so does the 6-hourly reload. **But a restart of the container then fails, and every site is down until the file is fixed.** Always run `nginx -t` before relying on a change. |
+| A site file has an error, such as a certificate path that does not exist | `nginx -t` fails and nothing is reloaded; the running configuration keeps serving, and so does the 6-hourly reload. **But a restart of the container then fails, and every site is down until the file is fixed.** Apply every change with `scripts/reload.sh`, which tests before it reloads. |
 | A renewal fails | certbot logs it (`docker compose logs certbot`) and tries again 12 hours later. The current certificate is served until it expires. |
 | The health check fails | `docker compose ps` shows the container as unhealthy. Docker does not restart it on its own. |
 | The host reboots | Both containers start again (`restart: unless-stopped`). |
@@ -173,7 +174,6 @@ There is no web application firewall, no authentication layer and no protection 
 - **Certificates are issued by hand,** one command per site, through HTTP-01 only.
 - **Behind a CDN or another proxy,** nginx sees that proxy's address. Rate limits then apply to the CDN, and the backend gets the CDN's address. Recovering the client address needs `real_ip` configuration, which is not included.
 - **IPv6 clients.** nginx listens on IPv4 only (an `[::]` listener fails to start on hosts with IPv6 disabled). In its default configuration, Docker still accepts IPv6 connections on the published ports and forwards them through its userland proxy, so for those clients nginx sees a Docker gateway address: they share one rate-limit bucket, and the backend cannot tell them apart.
-- **Edits to `nginx/nginx.conf`** reach the container only after `docker compose restart nginx`. It is mounted as a single file, and `git pull` and many editors replace the file instead of writing into it. The other directories are mounted whole and need only a reload.
 - **gzip and BREACH.** gzip is on, including for `text/html`. A page that reflects attacker-controlled input next to a secret, such as a CSRF token, should turn gzip off.
 - **HSTS with `includeSubDomains`.** Deployed on an apex domain, it forces HTTPS on every subdomain. Check those first.
 - **The certbot container is not hardened like nginx.** It keeps a writable root filesystem and Docker's default capabilities. It publishes no ports.

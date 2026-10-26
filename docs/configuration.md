@@ -4,14 +4,16 @@ How the nginx configuration is put together, the defaults every site inherits, a
 
 ## How the files are loaded
 
+The repository's `nginx/` directory is mounted at `/etc/nginx/proxy`, `sites/` at `/etc/nginx/sites`, and nginx starts with `-c /etc/nginx/proxy/nginx.conf` (`NGINX_CONF` in `docker-compose.yml`). Relative `include` paths, such as `snippets/proxy-headers.conf` in a site file, resolve against `/etc/nginx/proxy`. The image's own `/etc/nginx/nginx.conf` and `conf.d/` are not used.
+
 [`nginx/nginx.conf`](../nginx/nginx.conf) is the only top-level file. At `http` level it includes, in this order:
 
-1. `mime.types` from the image
+1. `/etc/nginx/mime.types` from the image
 2. [`snippets/ssl.conf`](../nginx/snippets/ssl.conf): TLS for every server
 3. [`conf.d/*.conf`](../nginx/conf.d): the catch-all servers and the health endpoint
-4. `/etc/nginx/sites/*.conf`: your sites, mounted from `sites/`
+4. `/etc/nginx/sites/*.conf`: your sites
 
-Every directory is mounted read-only. `sites/*.conf`, `certs/`, `.env` and `docker-compose.override.yml` are gitignored, so a `git pull` never touches them.
+Both directories are mounted read-only, and as directories, so that a file replaced by `git pull` or an editor is picked up by the next reload. `sites/*.conf`, `certs/`, `.env` and `docker-compose.override.yml` are gitignored, so a `git pull` never touches them.
 
 ## Defaults
 

@@ -9,22 +9,16 @@ cd "$(dirname "$0")/.."
 # shellcheck source=scripts/fixtures.sh
 . scripts/fixtures.sh
 
-# The image docker-compose.yml runs, read from the file so that the two cannot drift.
-image=$(sed -n 's|^[[:space:]]*image: \(nginx:[^[:space:]]*\)$|\1|p' docker-compose.yml | head -1)
-: "${image:?could not read the nginx image from docker-compose.yml}"
-
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 nginx_t() {
   docker run --rm \
-    -v "$PWD/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
-    -v "$PWD/nginx/snippets:/etc/nginx/snippets:ro" \
-    -v "$PWD/nginx/conf.d:/etc/nginx/conf.d:ro" \
+    -v "$PWD/nginx:$(dirname "$conf"):ro" \
     -v "$work/sites:/etc/nginx/sites:ro" \
     -v "$work/certs:/etc/letsencrypt:ro" \
     -v "$work/webroot:/var/www/certbot:ro" \
-    "$image" nginx -t
+    "$image" nginx -c "$conf" -t
 }
 
 # Every site example together, each with its certificate.

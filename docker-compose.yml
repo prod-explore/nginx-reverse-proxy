@@ -11,18 +11,23 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      # The configuration nginx runs, inside the nginx/ mount below. Every nginx
+      # command in this container needs it as -c; scripts/reload.sh reads it here.
+      NGINX_CONF: /etc/nginx/proxy/nginx.conf
+    # Directories only, never a single file: a file bind mount stays on the inode
+    # it was started with, so after git or an editor replaces the file, nginx
+    # would keep reading the old copy until the container is recreated.
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/snippets:/etc/nginx/snippets:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx:/etc/nginx/proxy:ro
       - ./sites:/etc/nginx/sites:ro
       - ./certs/conf:/etc/letsencrypt:ro
       - ./certs/www:/var/www/certbot:ro
     # Reload every 6 h so that renewed certificates are picked up without a
     # restart. $$ is compose's escape for a literal $.
     command: >-
-      /bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done &
-      exec nginx -g "daemon off;"'
+      /bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -c "$$NGINX_CONF" -s reload; done &
+      exec nginx -c "$$NGINX_CONF" -g "daemon off;"'
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/healthz"]
       interval: 30s

@@ -2,13 +2,15 @@
 
 Day-to-day tasks on a running proxy. Every command runs from the repository directory on the server. `DOMAIN`, `BACKEND` and `EMAIL` are the variables from the [deployment steps](../README.md#deploy-on-a-server).
 
-After any change to `sites/`, `nginx/snippets/` or `nginx/conf.d/`, test and reload:
+After any change to `sites/` or `nginx/`, test and reload:
 
 ```sh
-docker compose exec nginx sh -c 'nginx -t && nginx -s reload'
+scripts/reload.sh
 ```
 
-`nginx -t` refuses a broken file and nothing changes. Reloading without it is also safe for the running proxy, which keeps its old configuration, but the broken file stays on disk and the next container restart fails.
+It runs `nginx -t` inside the container and reloads only if the test passes; a broken file changes nothing. Reloading without the test is also safe for the running proxy, which keeps its old configuration, but the broken file stays on disk and the next container restart fails.
+
+nginx runs with `-c "$NGINX_CONF"` (set in `docker-compose.yml`). A bare `nginx -t` inside the container tests the image's unused default configuration and proves nothing; `reload.sh` passes `-c`.
 
 ## Adding a site
 
@@ -85,7 +87,7 @@ Remove the site file first: a site file that names a deleted certificate stops n
 
 ```sh
 rm "sites/$DOMAIN.conf"
-docker compose exec nginx sh -c 'nginx -t && nginx -s reload'
+scripts/reload.sh
 docker compose exec certbot certbot delete --cert-name "$DOMAIN"
 ```
 
@@ -95,15 +97,10 @@ After the reload the name falls through to the catch-all server, which refuses i
 
 | What changed | What to run |
 | --- | --- |
-| `sites/*.conf`, `nginx/snippets/`, `nginx/conf.d/` | `docker compose exec nginx sh -c 'nginx -t && nginx -s reload'` |
-| `nginx/nginx.conf` | `docker compose restart nginx` |
+| `sites/*.conf`, anything under `nginx/` | `scripts/reload.sh` |
 | `docker-compose.yml`, `docker-compose.override.yml` | `docker compose up -d` |
 
-`nginx/nginx.conf` is the one file mounted on its own. `git pull` and many editors replace a file instead of writing into it, and the container keeps the old copy until it restarts; a reload is not enough. Check before restarting, so that a mistake does not take every site down:
-
-```sh
-docker compose run --rm --no-deps nginx nginx -t
-```
+`nginx/` and `sites/` are mounted as directories, never as single files. `git pull` and many editors replace a file rather than write into it; a bind-mounted file would keep the container on the old copy until it is recreated, while a mounted directory shows the new file on the next reload.
 
 ## Updates
 
@@ -112,9 +109,10 @@ Dependabot opens a pull request each week when a pinned image or GitHub Action h
 ```sh
 git pull
 docker compose up -d
+scripts/reload.sh
 ```
 
-`docker compose up -d` pulls the new images and recreates only the containers whose image or settings changed.
+`docker compose up -d` pulls the new images and recreates only the containers whose image or settings changed. A change under `nginx/` alone recreates nothing, so `reload.sh` applies it.
 
 ## Logs and health
 

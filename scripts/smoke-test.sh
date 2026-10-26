@@ -7,7 +7,8 @@
 # request headers it received. Then checks the behaviour the README promises:
 # unknown hosts rejected, redirects, ACME webroot, security headers, client
 # address not spoofable, dotfiles denied, WebSocket upgrade, login rate limit,
-# and that `nginx -t && nginx -s reload` works inside the running container.
+# and that scripts/reload.sh works on the running container and picks up a
+# replaced nginx.conf.
 #
 # Needs docker (with compose v2.24.4 or newer), openssl and curl. Used by CI.
 set -euo pipefail
@@ -15,9 +16,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/fixtures.sh
 . scripts/fixtures.sh
-
-image=$(sed -n 's|^[[:space:]]*image: \(nginx:[^[:space:]]*\)$|\1|p' docker-compose.yml | head -1)
-: "${image:?could not read the nginx image from docker-compose.yml}"
 
 # A compose project of its own, so the test never touches the containers or
 # networks of a proxy already running on the host.
@@ -31,6 +29,9 @@ cleanup() {
 trap cleanup EXIT
 
 make_fixtures "$work"
+# A copy of nginx/, so that the reload check can replace nginx.conf without
+# touching the repository.
+cp -R nginx "$work/nginx"
 mkdir -p "$work/webroot/.well-known/acme-challenge"
 echo "acme-token-ok" > "$work/webroot/.well-known/acme-challenge/token"
 
@@ -48,10 +49,10 @@ server {
 }
 EOF
 
-# Same service as in production, except: sites and certificates come from the
-# throwaway tree, ports go to random loopback ports (!override replaces the
-# production list instead of adding to it), the container name is per run, and
-# a 1 s healthcheck lets --wait return quickly.
+# Same service as in production, except: configuration, sites and certificates
+# come from the throwaway tree, ports go to random loopback ports (!override
+# replaces the production list instead of adding to it), the container name is
+# per run, and a 1 s healthcheck lets --wait return quickly.
 cat > "$work/compose.yml" <<EOF
 services:
   nginx:
@@ -60,6 +61,7 @@ services:
       - "127.0.0.1::80"
       - "127.0.0.1::443"
     volumes:
+      - $work/nginx:$(dirname "$conf"):ro
       - $work/sites:/etc/nginx/sites:ro
       - $work/certs:/etc/letsencrypt:ro
       - $work/webroot:/var/www/certbot:ro
@@ -155,13 +157,27 @@ codes=""
 for _ in 1 2 3 4 5 6 7 8; do codes+="$(status_of https shop.example.com /api/login -X POST) "; done
 check "login allows 1 + burst of 5, then answers 429" "$codes" "200 200 200 200 200 200 429 429"
 
-echo "== Reload (the step the README runs after adding a site)"
-if compose exec -T nginx sh -c 'nginx -t -q && nginx -s reload' >/dev/null 2>&1; then
-  ok "nginx -t && nginx -s reload works in the read-only container"
-else
-  fail "nginx -t && nginx -s reload works in the read-only container"
-fi
+echo "== Reload (scripts/reload.sh, the step after every change)"
+reload() { scripts/reload.sh -p "$project" -f docker-compose.yml -f "$work/compose.yml" >/dev/null 2>&1; }
+if reload; then ok "reload.sh tests and reloads the read-only container"; else fail "reload.sh tests and reloads the read-only container"; fi
 check "still serving after the reload" "$(status_of https app.example.com /)" "200"
+
+# Replace nginx.conf the way git and most editors do: write a new file and
+# rename it over the old one, so that it gets a new inode. The new file answers
+# 503 instead of 429 over a limit, and the login zone is still exhausted from
+# the rate-limit check above. Several tries: the reload returns before the new
+# workers are up, and a slot in the zone frees every 12 s.
+sed 's/limit_req_status  429;/limit_req_status  503;/' "$work/nginx/nginx.conf" > "$work/nginx/nginx.conf.new"
+chmod a+r "$work/nginx/nginx.conf.new"
+mv "$work/nginx/nginx.conf.new" "$work/nginx/nginx.conf"
+reload || true
+codes=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  codes+="$(status_of https shop.example.com /api/login -X POST) "
+  case $codes in *503*) break ;; esac
+  sleep 0.2
+done
+check "a replaced nginx.conf takes effect on reload" "$codes" "503"
 
 echo
 echo "$passed passed, $failed failed"
