@@ -63,11 +63,11 @@ DOMAIN=app.example.com    # its DNS record points to this host
 EMAIL=you@example.com     # for the Let's Encrypt account
 ```
 
-**2. Give the app its own network and let the proxy join it.** The placeholder app below is the nginx image the proxy already uses; replace it with yours. An app with its own Compose file attaches to the network as shown in [`docker-compose.override.example.yml`](docker-compose.override.example.yml).
+**2. Give the app its own network and let the proxy join it.** The placeholder app below runs the nginx image pinned in `docker-compose.yml`, read from it with `docker compose config --images`; replace it with yours. An app with its own Compose file attaches to the network as shown in [`docker-compose.override.example.yml`](docker-compose.override.example.yml).
 
 ```sh
 docker network create app_net
-docker run -d --name app --network app_net nginx:1.28-alpine
+docker run -d --name app --network app_net "$(docker compose config --images nginx)"
 cat > docker-compose.override.yml <<'EOF'
 services:
   nginx:
