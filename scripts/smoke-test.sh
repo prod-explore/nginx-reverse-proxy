@@ -6,11 +6,12 @@
 # stub backend that answers for all example container names and echoes the
 # request headers it received. Then checks the behaviour the README promises:
 # unknown hosts rejected, redirects, ACME webroot, security headers, client
-# address not spoofable, dotfiles denied, WebSocket upgrade, login rate limit,
-# and that scripts/reload.sh works on the running container and picks up a
-# replaced nginx.conf.
+# address not spoofable, IPv6 clients seen by their own address, dotfiles
+# denied, WebSocket upgrade, login rate limit, and that scripts/reload.sh works
+# on the running container and picks up a replaced nginx.conf.
 #
-# Needs docker (with compose v2.24.4 or newer), openssl and curl. Used by CI.
+# Needs docker (Engine 27 or newer on a host with IPv6, compose v2.24.4 or
+# newer), openssl and curl. Used by CI.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -138,6 +139,26 @@ xff=$(sed -n 's/.*xff=\[\([^]]*\)\].*/\1/p' <<<"$echoed")
 check "X-Forwarded-For is the peer address, the same as X-Real-IP" "$echoed" "xri=[$xff]"
 check "the Forwarded header is dropped" "$echoed" "fwd=[]"
 check "the Proxy header (httpoxy) is dropped" "$echoed" "proxy=[]"
+
+echo "== IPv6"
+# From the stub backend, which shares the proxy's network, straight to nginx's
+# IPv6 address: the [::] listeners work, and the log shows the client's own
+# address. (The host's ::1 cannot show this: Docker relays loopback through its
+# userland proxy.)
+# Recent Docker prints "invalid IP" for a missing address, so keep only an address.
+ip6_of() { docker inspect -f '{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}' "$1" \
+             | grep -oE '^[0-9a-f:]*:[0-9a-f:]*$' || true; }
+nginx_ip6=$(ip6_of "$(compose ps -q nginx)")
+client_ip6=$(ip6_of "$(compose ps -q backend)")
+if [ -n "$nginx_ip6" ] && [ -n "$client_ip6" ]; then
+  check "nginx answers on its IPv6 address" \
+    "$(compose exec -T backend wget -q -O - --header 'Host: app.example.com' \
+         "http://[$nginx_ip6]/.well-known/acme-challenge/token" 2>&1)" "acme-token-ok"
+  check "the access log shows the IPv6 client's own address" \
+    "$(compose logs --no-log-prefix nginx 2>/dev/null)" "$client_ip6 app.example.com \"GET /.well-known/acme-challenge/token"
+else
+  fail "the proxy's network has IPv6" "nginx=[$nginx_ip6] backend=[$client_ip6]"
+fi
 
 echo "== Paths"
 check "dotfiles are denied" "$(status_of https app.example.com /.git/config)" "403"

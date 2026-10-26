@@ -48,7 +48,7 @@ Access logs go to stdout and errors to stderr, so `docker logs` and `docker comp
 
 With `nodelay`, a burst is answered at once and the next request over the limit gets `429`. On `/api/login` that is six requests in a row, then `429` until the rate frees a slot.
 
-The key is `$binary_remote_addr`, the TCP peer. See the [known limits](../README.md#known-limits) for what that means behind a CDN and for IPv6 clients.
+The key is `$binary_remote_addr`, the TCP peer: an IPv4 address, or a full 128-bit IPv6 address (see [IPv6](operations.md#ipv6) for why nginx sees the real one). See the [known limits](../README.md#known-limits) for what that means behind a CDN.
 
 ## Snippets
 

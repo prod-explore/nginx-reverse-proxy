@@ -71,3 +71,13 @@ services:
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
+
+networks:
+  # The network the published ports lead to. With IPv6 on it, Docker (ip6tables,
+  # on by default since Engine 27) forwards an IPv6 connection to nginx's own IPv6
+  # address and the client address is kept. On an IPv4-only network Docker's
+  # userland proxy relays it instead, and nginx sees a Docker gateway address for
+  # every IPv6 client. No subnet is set: the daemon allocates a unique local /64.
+  # Backend networks stay IPv4-only; nginx reaches backends over IPv4.
+  default:
+    enable_ipv6: true

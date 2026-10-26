@@ -58,6 +58,35 @@ Compose recreates the nginx container. Every site is unavailable for the few sec
 docker network connect app2_net nginx-proxy
 ```
 
+## IPv6
+
+The repository's part is in place: the proxy's network has IPv6 (`enable_ipv6` in `docker-compose.yml`, no subnet), and every server listens on `[::]` as well as on IPv4. Docker then forwards an IPv6 connection on 80 or 443 to nginx's own IPv6 address, so nginx logs, rate-limits and forwards the client's real address. Without IPv6 on that network, Docker's userland proxy relays the connection and every IPv6 client appears as one Docker gateway address. Backend networks need no IPv6.
+
+On the host:
+
+1. **Docker Engine 27 or newer** (`docker version`). From 27.0, `ip6tables` is on by default and an IPv6 network created without a subnet gets a unique local `/64`. Older engines need experimental settings and an explicit subnet; upgrade instead.
+2. **`ip6tables` left on.** Nothing is needed in `/etc/docker/daemon.json` unless it turns `ip6tables` off. If it does, set it back, keeping the file's other keys, and run `sudo systemctl restart docker` (this restarts every container on the host):
+
+   ```json
+   {
+     "ip6tables": true
+   }
+   ```
+
+   Two settings that look related are not needed: `"ipv6": true` applies only to the default `docker0` bridge, which Compose does not use, and `"userland-proxy": false` changes nothing for clients from outside, whose connections already go through `ip6tables` and never reach the userland proxy.
+3. **A public IPv6 address, open on 80 and 443.** `ip -6 addr show scope global` lists the host's addresses; use the one not marked `temporary`. Home routers usually drop unsolicited inbound IPv6: allow TCP 80 and 443 to that address on the router, and in the host's firewall if it runs one.
+4. **An AAAA record** for every name, next to its A record. Let's Encrypt validates over IPv6 when an AAAA record exists, so add it only once step 3 works, or issuing and renewal can fail.
+
+A proxy that already ran before IPv6 was enabled keeps its IPv4-only network until the network is recreated. That stops every site for a few seconds:
+
+```sh
+docker compose down
+docker compose up -d
+docker network inspect proxy_default --format '{{.EnableIPv6}}'    # true
+```
+
+To verify, open a site from a device outside your network over IPv6 only, such as a phone on mobile data with Wi-Fi off, then look at `docker compose logs nginx`: the request must show the phone's public IPv6 address, not an address of the Docker network.
+
 ## Certificates
 
 **Several names on one certificate.** Pass each name with `-d`. certbot stores the certificate under the first name, so the paths in the site file stay `live/$DOMAIN/...`; list every name in each `server_name` line of the site file, and in the bootstrap file before issuing.
@@ -125,7 +154,7 @@ docker compose ps
 nginx writes one line per request: client address, host, request line, status, bytes sent, total time (`rt`), backend time (`urt`) and user agent.
 
 ```text
-172.20.0.1 shop2.example.com "GET /api/x HTTP/2.0" 200 28 rt=0.001 urt=0.001 "curl/8.5.0"
+2001:db8:4:1::7 shop2.example.com "GET /api/x HTTP/2.0" 200 28 rt=0.001 urt=0.001 "curl/8.5.0"
 ```
 
 The health check requests `http://127.0.0.1:8081/healthz` inside the container every 30 seconds. `docker compose ps` shows the result; Docker does not act on it.

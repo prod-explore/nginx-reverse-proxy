@@ -13,6 +13,7 @@ nginx and certbot in Docker Compose, for serving several containerized web apps 
 - **Response headers.** HSTS, `nosniff`, `Referrer-Policy` and `X-Frame-Options` on every response. No nginx version in `Server`; the backend's `X-Powered-By` is removed.
 - **A client address the backend can trust.** `X-Forwarded-For` and `X-Real-IP` come from the TCP connection. Whatever the client sent in `X-Forwarded-For`, `Forwarded` or `Proxy` (httpoxy) never reaches the backend.
 - **No dotfiles.** Requests for paths such as `/.git/config` or `/.env` get `403` from the proxy, whatever the backend would have answered.
+- **IPv4 and IPv6 clients, each by its own address.** The proxy's network has IPv6, so Docker hands IPv6 connections to nginx directly instead of relaying them; logs, rate limits and `X-Forwarded-For` see the real client address over both protocols.
 - **Per-IP limits.** Request rate and concurrent connections per address, a stricter zone for login endpoints, `429` when exceeded.
 - **WebSockets and server-sent events.** Upgrade requests are passed on for every site; a streaming variant turns off buffering and allows one-hour timeouts.
 - **Backends resolved per request.** A backend that is down, or not created yet, does not keep nginx from starting; only its own site fails until it is back.
@@ -39,7 +40,7 @@ ok   a replaced nginx.conf takes effect on reload
 
 ## Try it locally
 
-No domain or open ports needed. You need Docker with Compose v2.24.4 or newer, `openssl` and `curl`.
+No domain or open ports needed. You need Docker Engine 27 or newer with IPv6 enabled in the kernel (the default on Linux), Compose v2.24.4 or newer, `openssl` and `curl`.
 
 ```sh
 git clone https://github.com/prod-explore/nginx-reverse-proxy.git
@@ -51,7 +52,7 @@ The script starts the proxy from `docker-compose.yml` with every site in [`examp
 
 ## Deploy on a server
 
-You need a host with Docker and Compose v2, ports 80 and 443 reachable from the internet, and a DNS record for your domain that points to the host. [[Q2: Which architectures have you run it on (amd64, arm64 / Raspberry Pi)? I will state only what you confirm.]]
+You need a host with Docker Engine 27 or newer and Compose v2, ports 80 and 443 reachable from the internet, and a DNS record for your domain that points to the host. IPv6 needs a few host-side steps, listed in [operations](docs/operations.md#ipv6). [[Q2: Which architectures have you run it on (amd64, arm64 / Raspberry Pi)? I will state only what you confirm.]]
 
 **1. Clone and set three variables.** The rest of the commands use them.
 
@@ -173,7 +174,7 @@ There is no web application firewall, no authentication layer and no protection 
 - **One host, one nginx.** There is no failover. Fixed container names (`nginx-proxy`, `certbot`) allow one instance per Docker host.
 - **Certificates are issued by hand,** one command per site, through HTTP-01 only.
 - **Behind a CDN or another proxy,** nginx sees that proxy's address. Rate limits then apply to the CDN, and the backend gets the CDN's address. Recovering the client address needs `real_ip` configuration, which is not included.
-- **IPv6 clients.** nginx listens on IPv4 only (an `[::]` listener fails to start on hosts with IPv6 disabled). In its default configuration, Docker still accepts IPv6 connections on the published ports and forwards them through its userland proxy, so for those clients nginx sees a Docker gateway address: they share one rate-limit bucket, and the backend cannot tell them apart.
+- **IPv6 depends on the host.** The repository enables it on the proxy's network; the host must keep Docker's `ip6tables` on and have a public IPv6 address open on 80 and 443 (see [operations](docs/operations.md#ipv6)). A host whose kernel has IPv6 disabled cannot start the proxy as configured.
 - **gzip and BREACH.** gzip is on, including for `text/html`. A page that reflects attacker-controlled input next to a secret, such as a CSRF token, should turn gzip off.
 - **HSTS with `includeSubDomains`.** Deployed on an apex domain, it forces HTTPS on every subdomain. Check those first.
 - **The certbot container is not hardened like nginx.** It keeps a writable root filesystem and Docker's default capabilities. It publishes no ports.

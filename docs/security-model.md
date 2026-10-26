@@ -11,7 +11,7 @@ What the proxy defends against, where each defence lives, and what it leaves to 
 
 ## Exposure
 
-Only the nginx container publishes ports: 80 and 443 on all host addresses. The certbot container publishes none. The health endpoint listens on `127.0.0.1:8081` inside the nginx container, so neither the internet nor other containers reach it. Neither container mounts the Docker socket.
+Only the nginx container publishes ports: 80 and 443 on all host addresses, IPv4 and IPv6. The certbot container publishes none. The health endpoint listens on `127.0.0.1:8081` inside the nginx container, so neither the internet nor other containers reach it. Neither container mounts the Docker socket.
 
 ## Threats and defences
 
@@ -45,7 +45,6 @@ Mozilla's "intermediate" profile, without its DHE suites, so there is no `dhpara
 - **Authentication, a web application firewall, bot detection.** Requests that pass the limits reach the backend as they are.
 - **Volumetric DDoS protection.** Per-address limits stop one noisy client, not a distributed flood that saturates the link.
 - **Recovering client addresses behind another proxy.** Behind a CDN, nginx sees the CDN's addresses; the per-address limits and `X-Forwarded-For` then apply to the CDN. There is no `real_ip` configuration.
-- **Client addresses over IPv6 on a default Docker setup.** nginx listens on IPv4. Docker forwards IPv6 connections through its userland proxy, so nginx sees a Docker gateway address for those clients; they share one rate-limit bucket.
 - **Hardening of the certbot container.** It runs with a writable root filesystem and Docker's default capabilities. It publishes no ports and talks only to Let's Encrypt.
 
 ## Backend checklist
