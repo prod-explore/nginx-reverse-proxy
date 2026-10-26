@@ -1,136 +1,193 @@
 # nginx-reverse-proxy
 
-A small, hardened reverse proxy for a Docker host: **one nginx with automatic HTTPS (certbot) in front of any number of containers**, each on its own network. No generator, no labels, no control plane: a site is a plain nginx file copied from `examples/`, and CI starts the real proxy and runs 25 checks against what [is hardened](#what-is-hardened-and-why).
+[![CI](https://github.com/prod-explore/nginx-reverse-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/prod-explore/nginx-reverse-proxy/actions/workflows/ci.yml)
 
+nginx and certbot in Docker Compose, for serving several containerized web apps from one host over HTTPS. Each app stays on its own Docker network and publishes no ports. nginx joins those networks, terminates TLS with Let's Encrypt certificates and routes by host name. On every push to `main` and every pull request, CI starts the proxy and checks its behaviour from the outside.
+
+[[Q1: Where does this run today, and since when? One sentence, e.g. "Runs on my Raspberry Pi in front of N apps", or remove this line.]]
+
+## What it does
+
+- **Unknown host names get nothing.** On port 80 nginx closes the connection; on port 443 it refuses the TLS handshake without presenting a certificate. Scanning the IP address reveals neither a page nor the names of the hosted sites.
+- **HTTPS only.** Port 80 redirects to HTTPS and serves nothing but the ACME challenge. TLS 1.2 and 1.3 with forward-secret AEAD ciphers (Mozilla's "intermediate" profile without the DHE suites), HTTP/2.
+- **Response headers.** HSTS, `nosniff`, `Referrer-Policy` and `X-Frame-Options` on every response. No nginx version in `Server`; the backend's `X-Powered-By` is removed.
+- **A client address the backend can trust.** `X-Forwarded-For` and `X-Real-IP` come from the TCP connection. Whatever the client sent in `X-Forwarded-For`, `Forwarded` or `Proxy` (httpoxy) never reaches the backend.
+- **No dotfiles.** Requests for paths such as `/.git/config` or `/.env` get `403` from the proxy, whatever the backend would have answered.
+- **Per-IP limits.** Request rate and concurrent connections per address, a stricter zone for login endpoints, `429` when exceeded.
+- **WebSockets and server-sent events.** Upgrade requests are passed on for every site; a streaming variant turns off buffering and allows one-hour timeouts.
+- **Backends resolved per request.** A backend that is down, or not created yet, does not keep nginx from starting; only its own site fails until it is back.
+- **Certificates renew without intervention.** certbot checks twice a day; nginx reloads every 6 hours to pick up renewed files.
+- **A hardened nginx container.** Read-only root filesystem, every capability dropped except the four nginx needs, `no-new-privileges`, memory and process limits.
+
+[`scripts/smoke-test.sh`](scripts/smoke-test.sh) checks most of this against a running proxy; the rest are settings you can read in [`nginx/`](nginx) and [`docker-compose.yml`](docker-compose.yml). Part of its output:
+
+```text
+== Unknown hosts
+ok   HTTP to an unknown host gets the connection closed (444)
+ok   TLS to an unknown host is refused without a certificate
+== Client address
+ok   a forged X-Forwarded-For/X-Real-IP does not reach the backend
+ok   X-Forwarded-For is the peer address, the same as X-Real-IP
+ok   the Forwarded header is dropped
+ok   the Proxy header (httpoxy) is dropped
+== Rate limiting
+ok   login allows 1 + burst of 5, then answers 429
+== Reload (the step the README runs after adding a site)
+ok   nginx -t && nginx -s reload works in the read-only container
 ```
-Internet ─▶ nginx :80/:443 ─┬─▶ app1_net ─▶ app1      unknown hosts: connection closed, no certificate shown
-                            ├─▶ app2_net ─▶ app2      certbot renews the certificates, nginx reloads every 6 h
-                            └─▶ app3_net ─▶ app3      backends never see each other, none publishes a port
+
+## Try it locally
+
+No domain or open ports needed. You need Docker with Compose v2.24.4 or newer, `openssl` and `curl`.
+
+```sh
+git clone https://github.com/prod-explore/nginx-reverse-proxy.git
+cd nginx-reverse-proxy
+scripts/smoke-test.sh
 ```
 
-```bash
-git clone https://github.com/prod-explore/nginx-reverse-proxy.git && cd nginx-reverse-proxy
-docker compose up -d        # nginx on :80/:443; every host is refused until you add a site
+The script starts the proxy from `docker-compose.yml` with every site in [`examples/`](examples), throwaway certificates and a stub backend that echoes the headers it receives. It then sends real requests and prints one line per check. It runs as its own Compose project on random loopback ports, so it does not touch a proxy already running on the host, and it removes everything when it exits.
+
+## Deploy on a server
+
+You need a host with Docker and Compose v2, ports 80 and 443 reachable from the internet, and a DNS record for your domain that points to the host. [[Q2: Which architectures have you run it on (amd64, arm64 / Raspberry Pi)? I will state only what you confirm.]]
+
+**1. Clone and set three variables.** The rest of the commands use them.
+
+```sh
+git clone https://github.com/prod-explore/nginx-reverse-proxy.git
+cd nginx-reverse-proxy
+DOMAIN=app.example.com    # its DNS record points to this host
+BACKEND=app:80            # <container name>:<port> of the app
+EMAIL=you@example.com     # for the Let's Encrypt account
 ```
 
-I run this on a Raspberry Pi in front of a handful of unrelated projects.
+**2. Give the app its own network and let the proxy join it.** The placeholder app below is the nginx image the proxy already uses; replace it with yours. An app with its own Compose file attaches to the network as shown in [`docker-compose.override.example.yml`](docker-compose.override.example.yml).
 
-## Connecting backends
+```sh
+docker network create app_net
+docker run -d --name app --network app_net nginx:1.28-alpine
+cat > docker-compose.override.yml <<'EOF'
+services:
+  nginx:
+    networks: [default, app_net]
+networks:
+  app_net:
+    external: true
+EOF
+```
 
-Each backend keeps its own network, and the proxy joins all of them, so two backends never see each other and none publishes a port to the host.
+**3. Start the proxy.**
 
-```bash
-docker network create app1_net        # once per backend; attach the backend to it in its own compose file
-cp docker-compose.override.example.yml docker-compose.override.yml   # list your networks in it
+```sh
 docker compose up -d
 ```
 
-`docker-compose.override.yml` is gitignored; the example lists `app1_net` and `app2_net`, and `docker compose up` fails until every network it lists exists.
+**4. Get a certificate.** nginx will not load a site whose certificate file does not exist yet, so a site starts with a bootstrap file that serves only the ACME challenge on port 80. The certbot service's entrypoint is the renewal loop, so a one-off command overrides it.
 
-## Adding a site
-
-DNS for the domain must point at the host, and ports 80 and 443 must be reachable. A site needs a certificate before its HTTPS server can load, so adding one takes two steps, both on the same file.
-
-**1. Bootstrap, and get the certificate**
-
-```bash
-DOMAIN=app.your-domain.com       # the site's domain
-cp examples/bootstrap.conf.example "sites/$DOMAIN.conf"
-sed -i "s/app.example.com/$DOMAIN/g" "sites/$DOMAIN.conf"
-docker compose exec nginx nginx -t && docker compose exec nginx nginx -s reload
-
+```sh
+sed "s/app.example.com/$DOMAIN/g" examples/bootstrap.conf.example > "sites/$DOMAIN.conf"
+docker compose exec nginx sh -c 'nginx -t && nginx -s reload'
 docker compose run --rm --entrypoint certbot certbot certonly --webroot -w /var/www/certbot \
-  -d "$DOMAIN" --email you@example.com --agree-tos --no-eff-email
+  -d "$DOMAIN" --email "$EMAIL" --agree-tos --no-eff-email
 ```
 
-**2. Replace the bootstrap with the real site**
+**5. Replace the bootstrap file with the full site.**
 
-```bash
-BACKEND=app:3000                 # <container name>:<port> of the backend
-cp examples/site.conf.example "sites/$DOMAIN.conf"          # overwrites the bootstrap
-sed -i "s/app.example.com/$DOMAIN/g; s/app:3000/$BACKEND/g" "sites/$DOMAIN.conf"
-docker compose exec nginx nginx -t && docker compose exec nginx nginx -s reload
+```sh
+sed -e "s/app.example.com/$DOMAIN/g" -e "s/app:3000/$BACKEND/" examples/site.conf.example > "sites/$DOMAIN.conf"
+docker compose exec nginx sh -c 'nginx -t && nginx -s reload'
+curl -I "https://$DOMAIN"
 ```
 
-Pick the example that matches the backend; the two variants use their own placeholders, so adjust the `sed` to them:
+Renewal needs nothing more. Sites with a frontend and an API in separate containers, streaming sites, several names on one certificate, removing a site and updates are in [docs/operations.md](docs/operations.md).
 
-| Example | For | Placeholders |
-|---|---|---|
-| `examples/site.conf.example` | An ordinary web app or API | `app.example.com`, `app:3000` |
-| `examples/site-streaming.conf.example` | Server-sent events, long polling, WebSockets: no buffering, long timeouts | `stream.example.com`, `stream-app:8080` |
-| `examples/site-frontend-and-api.conf.example` | A frontend and an API in different containers, with a stricter limit on the login endpoint | `shop.example.com`, `shop-web:80`, `shop-api:3000` |
+## How it works
 
-Certificates renew by themselves (see below). To remove a site, delete its file from `sites/`, reload nginx, and run `docker compose run --rm --entrypoint certbot certbot delete --cert-name YOUR.DOMAIN`.
-
-## Layout
-
-```
-nginx/nginx.conf          main config: limits, logging, timeouts, resolver, WebSocket map
-nginx/snippets/           shared pieces: ssl, security headers, proxy headers, timeouts, streaming
-nginx/conf.d/             the catch-all default server and the health endpoint
-examples/                 site files to copy into sites/
-sites/                    your sites (gitignored)
-certs/                    certificates and ACME webroot (gitignored, created on first start)
-scripts/check.sh          runs `nginx -t` on every example in the proxy's image
-scripts/smoke-test.sh     starts the proxy with the examples and checks what it does
-scripts/fixtures.sh       throwaway sites and certificates, shared by the two scripts
-SECURITY.md               how to report a vulnerability, and what is in scope
-```
-
-Your own sites and certificates never enter the repository: `sites/*.conf`, `certs/`, `.env` and `docker-compose.override.yml` are gitignored.
-
-## What is hardened, and why
-
-| Area | What | Why |
-|---|---|---|
-| Unknown hosts | Default server closes the connection (`444`) and refuses the TLS handshake (`ssl_reject_handshake`) | Scanners hitting the bare IP learn nothing, and no certificate (so no hostname of yours) is disclosed |
-| TLS | TLS 1.2/1.3, the Mozilla "intermediate" ECDHE ciphers (DHE suites left out, so no dhparam file to manage), session tickets off | Forward secrecy; nginx never rotates the ticket key while it runs, so tickets would weaken it. No OCSP stapling: Let's Encrypt shut down OCSP in 2025 |
-| Headers | HSTS (one year, `includeSubDomains`, no `preload`), `nosniff`, `Referrer-Policy`, `X-Frame-Options`, no `Server` version, no `X-Powered-By` | Cheap defence in depth. `preload` is hard to undo, so it is left to you. CSP is left to the application, which knows what it loads |
-| Client address | `X-Forwarded-For` is *replaced* with the real peer address, not appended to; client-sent `Forwarded` and `Proxy` headers are dropped | A client cannot forge its address to a backend that uses `trust proxy 1` or per-IP limits; `Proxy` is the httpoxy vector |
-| Abuse | Per-IP request rate (20 r/s, burst 60) and connection limits, answered with `429` | Cheap floods stop at the proxy; the connection limit is higher for streaming sites |
-| Slow clients | Short header/body timeouts, bounded header buffers, `client_max_body_size` per site | Slowloris-style connection hoarding, oversized uploads |
-| Resolution | Upstreams are resolved per request through Docker DNS, with a 5 s lookup timeout | A backend that restarts, or is not up yet, never stops nginx from starting or reloading |
-| WebSocket | `Connection: upgrade` is sent only when the client asked for an upgrade | One location serves both WebSocket handshakes and ordinary requests, which reach the backend unchanged |
-| Files | Dotfiles (`.git`, `.env`) are never served | Common scanner targets |
-| Container | Read-only filesystem, `no-new-privileges`, all capabilities dropped except the four nginx needs, memory and pid limits, log rotation | A compromised worker has very little to work with |
-| Certificates | certbot checks twice a day; nginx reloads every 6 h to pick up renewals | Renewal needs no human and no restart |
-| Config changes | `nginx -t` before every reload (in the steps above); `check.sh` and `smoke-test.sh` in CI | A typo cannot take every site down |
-
-nginx listens on IPv4 only inside the container: Docker forwards the host's IPv6 port to it anyway, and a `[::]` listener would stop nginx from starting on a kernel without IPv6.
-
-### Known limits
-
-Choices that cost something, so you can decide whether they cost too much for you.
-
-- **IPv6 clients look alike.** With Docker's default networking an IPv6 connection reaches nginx through `docker-proxy`, so nginx sees the bridge gateway's address, not the client's. The per-IP limits are then shared by every IPv6 client and `X-Forwarded-For` carries the gateway address. If the host has public IPv6, enable it on the proxy network (`enable_ipv6`, with ip6tables) before adding a `[::]` listener; if you only serve IPv4, nothing changes.
-- **`gzip_proxied any` over TLS.** Compressing a page that repeats a secret (a CSRF token) next to input an attacker can influence is the setup of the BREACH attack. Turn gzip off for `text/html` on a site that has such pages, or use per-request CSRF tokens.
-- **No keepalive to backends.** Upstreams are resolved per request (see above), which rules out nginx's connection pool: each proxied request opens a new connection on the Docker network. That is cheap there, and it is what lets nginx start before the backends do.
-- **Fixed container names.** `nginx-proxy` and `certbot` collide with another project of the same names on one host; rename them in `docker-compose.yml` if you run two.
-- **The login limit is per IP.** Many users behind one address (an office, a mobile carrier's NAT) share the 5 requests a minute; tune the `login` zone to your users.
-- **The certbot container is not as locked down as nginx.** It keeps the default capabilities and a writable filesystem because it writes the certificates. Tightening it is worth doing once you have watched a real renewal on your host.
-
-### Rate limiting a login endpoint
-
-`nginx.conf` defines a stricter `login` zone (5 requests per minute per IP) next to the general `perip` zone. `examples/site-frontend-and-api.conf.example` applies it to `/api/login` with a burst of 5: the 7th quick attempt gets `429`.
-
-## Around the proxy
-
-The proxy is one layer. On the host:
-
-- Bind internal services to `127.0.0.1` or keep them off the host entirely. A port published by Docker bypasses `ufw`/`iptables` rules written for the host.
-- Allow only 22, 80 and 443 from outside; consider `fail2ban` for SSH.
-- If the host sits behind Cloudflare, restore the real client address (`set_real_ip_from` + `real_ip_header CF-Connecting-IP`) before relying on per-IP limits.
-
-## Validation
-
-```bash
-scripts/check.sh          # every example through `nginx -t` in the proxy's image, plus the bootstrap alone
-scripts/smoke-test.sh     # starts the proxy and a stub backend, runs 25 checks, prints "25 passed, 0 failed"
+```mermaid
+flowchart LR
+    clients([Clients]) -- "80, 443" --> nginx
+    subgraph host [Docker host]
+        nginx["nginx-proxy<br/>TLS, routing, limits"]
+        certbot["certbot<br/>renewal every 12 h"]
+        certs[("certs/<br/>certificates, ACME webroot")]
+        subgraph net1 [app1_net]
+            app1[app1]
+        end
+        subgraph net2 [app2_net]
+            app2[app2]
+        end
+    end
+    nginx --> app1
+    nginx --> app2
+    certbot -- writes --> certs
+    certs -- read-only --> nginx
 ```
 
-Both need Docker and openssl; the smoke test also needs curl and Docker Compose 2.24.4 or newer, and uses random loopback ports, so it runs next to a live proxy. The smoke test checks: unknown hosts refused on both ports, the HTTP→HTTPS redirect, the ACME webroot, HTTP/2, the security headers and hidden versions, TLS 1.2/1.3 accepted and TLS 1.1 and non-forward-secret ciphers refused, the forged-address headers, dotfiles, routing of the frontend/API example, the WebSocket upgrade, the login rate limit, and `nginx -t && nginx -s reload` inside the read-only container.
+| Path | Contents |
+| --- | --- |
+| [`nginx/nginx.conf`](nginx/nginx.conf) | http-wide defaults every site inherits: logging, client timeouts, body size, gzip, rate-limit zones, Docker's DNS resolver |
+| [`nginx/snippets/`](nginx/snippets) | pieces a site includes: TLS, security headers, proxy headers, timeouts, streaming, ACME challenge |
+| [`nginx/conf.d/00-default.conf`](nginx/conf.d/00-default.conf) | the catch-all servers for unknown hosts and the loopback health endpoint |
+| [`examples/`](examples) | site templates; CI validates and runs every one of them |
+| `sites/*.conf` | your sites; gitignored, they stay on the server |
+| `certs/` | Let's Encrypt state and the ACME webroot; gitignored |
+| [`scripts/`](scripts) | `check.sh` (`nginx -t` on everything) and `smoke-test.sh` |
 
-CI (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request: `shellcheck`, `check.sh`, `docker compose config` for the compose file alone and with the override example, and `smoke-test.sh`. nginx 1.25.1 or newer is required (`http2 on;`); the nginx and certbot images are pinned in `docker-compose.yml` and kept current by Dependabot.
+One property was a requirement from the start: **nginx starts even when some backends are not running.** Each site passes its backend to `proxy_pass` through a variable, and `nginx.conf` points the resolver at Docker's embedded DNS (`127.0.0.11`). nginx then looks the name up when a request comes in (answers cached for 30 seconds) instead of once at startup. A missing backend fails its own site, not the start of the proxy. The cost: no keepalive connections to backends, and `proxy_pass` passes the request URI unchanged, so stripping a path prefix needs a `rewrite`.
+
+The rest of the setup, and what it costs:
+
+- **Sites are files, not container labels.** Each site is a plain nginx server block copied from an example. Nothing discovers containers, so neither container mounts the Docker socket, which is root-equivalent on the host. Traefik's Docker provider and nginx-proxy work from that socket and configure sites on their own; here, adding a site is a manual edit and a reload.
+- **One network per backend.** The proxy joins every backend network; backends share none, so they cannot reach each other. Adding a network to the override recreates the nginx container, a few seconds without service for every site; `docker network connect` avoids that (see [operations](docs/operations.md#adding-a-backend-network)).
+- **HTTP-01 through a shared webroot.** certbot writes challenge files into `certs/www`, which nginx serves on port 80. Issuing and renewing never stop nginx. The cost: no wildcard certificates (those need DNS-01), and every name must resolve to this host with port 80 open.
+- **Two timers, no hook.** certbot renews on its own schedule and nginx reloads every 6 hours, so a renewed certificate is served at most 6 hours late. certbot renews long before expiry, so the delay does not matter, and the certbot container needs no way to signal nginx (that would take the Docker socket or a shared process namespace).
+- **Limits are declared globally and applied per location.** `nginx.conf` defines the rate and connection zones; each location chooses which to apply, so a login endpoint can be stricter than the rest of the site. Security headers sit at server level because an `add_header` inside a location discards every inherited one.
+
+The defaults (timeouts, limits, body size, gzip) and the rules for using the snippets are in [docs/configuration.md](docs/configuration.md).
+
+## Security model
+
+Only nginx is reachable from outside, on ports 80 and 443. Backends publish no ports, and each sits on its own network.
+
+- **TLS** follows Mozilla's intermediate profile without DHE: TLS 1.2 and 1.3, ECDHE with AES-GCM or ChaCha20-Poly1305. Session tickets are off. There is no OCSP stapling, because Let's Encrypt certificates no longer name an OCSP responder.
+- **Client address.** The proxy assumes it is the only hop in front of the backend. It overwrites `X-Forwarded-For` with the TCP peer address, so a backend should trust exactly one proxy hop (in Express, `trust proxy` set to `1`).
+- **Response headers.** The proxy sets the headers that do not depend on the application. `Content-Security-Policy` is left to the application, which knows what it loads.
+- **Containers.** nginx runs with a read-only root filesystem, `tmpfs` for its scratch directories, all capabilities dropped except `NET_BIND_SERVICE`, `CHOWN`, `SETUID` and `SETGID`, `no-new-privileges`, and memory, process and log-size limits. Its health endpoint listens on the container's loopback only.
+
+There is no web application firewall, no authentication layer and no protection against floods larger than per-address limits can absorb. The full model, threat by threat with the file that handles each, is in [docs/security-model.md](docs/security-model.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+## When things fail
+
+| Event | What happens |
+| --- | --- |
+| A backend stops or is removed | Its site answers `502` or `504`; other sites are unaffected. It recovers without a reload when the backend is back. |
+| A site file has an error, such as a certificate path that does not exist | `nginx -t` fails and nothing is reloaded; the running configuration keeps serving, and so does the 6-hourly reload. **But a restart of the container then fails, and every site is down until the file is fixed.** Always run `nginx -t` before relying on a change. |
+| A renewal fails | certbot logs it (`docker compose logs certbot`) and tries again 12 hours later. The current certificate is served until it expires. |
+| The health check fails | `docker compose ps` shows the container as unhealthy. Docker does not restart it on its own. |
+| The host reboots | Both containers start again (`restart: unless-stopped`). |
+
+## Known limits
+
+- **One host, one nginx.** There is no failover. Fixed container names (`nginx-proxy`, `certbot`) allow one instance per Docker host.
+- **Certificates are issued by hand,** one command per site, through HTTP-01 only.
+- **Behind a CDN or another proxy,** nginx sees that proxy's address. Rate limits then apply to the CDN, and the backend gets the CDN's address. Recovering the client address needs `real_ip` configuration, which is not included.
+- **IPv6 clients.** nginx listens on IPv4 only (an `[::]` listener fails to start on hosts with IPv6 disabled). In its default configuration, Docker still accepts IPv6 connections on the published ports and forwards them through its userland proxy, so for those clients nginx sees a Docker gateway address: they share one rate-limit bucket, and the backend cannot tell them apart.
+- **Edits to `nginx/nginx.conf`** reach the container only after `docker compose restart nginx`. It is mounted as a single file, and `git pull` and many editors replace the file instead of writing into it. The other directories are mounted whole and need only a reload.
+- **gzip and BREACH.** gzip is on, including for `text/html`. A page that reflects attacker-controlled input next to a secret, such as a CSRF token, should turn gzip off.
+- **HSTS with `includeSubDomains`.** Deployed on an apex domain, it forces HTTPS on every subdomain. Check those first.
+- **The certbot container is not hardened like nginx.** It keeps a writable root filesystem and Docker's default capabilities. It publishes no ports.
+
+## Development
+
+| Command | What it checks |
+| --- | --- |
+| `shellcheck -x scripts/*.sh` | the scripts |
+| `scripts/check.sh` | `nginx -t` with the image from `docker-compose.yml`: every example together, then the bootstrap example alone, with throwaway certificates |
+| `docker compose config -q` | the Compose file, alone and with `-f docker-compose.yml -f docker-compose.override.example.yml` |
+| `scripts/smoke-test.sh` | the running proxy, from the outside |
+
+[CI](.github/workflows/ci.yml) runs all four on every push to `main` and every pull request. Dependabot opens weekly updates for the pinned images and the GitHub Actions; nginx updates stay on its stable branch, and moving to the next stable branch is a manual change.
 
 ## License
 
