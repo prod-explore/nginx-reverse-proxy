@@ -9,7 +9,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# NGINX_CONF is set in docker-compose.yml. Without -c, nginx would test and
-# signal the image's default configuration instead of this one.
+# NGINX_CONF is set in docker-compose.yml. Without -c, `nginx -t` would test the
+# image's default configuration instead of this one, and `-s reload` would take
+# the master's pid file path from that configuration too.
 # shellcheck disable=SC2016  # expanded by the shell inside the container
 docker compose "$@" exec -T nginx sh -c 'nginx -c "$NGINX_CONF" -t && nginx -c "$NGINX_CONF" -s reload'

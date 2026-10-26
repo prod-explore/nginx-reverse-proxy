@@ -13,7 +13,8 @@ services:
       - "443:443"
     environment:
       # The configuration nginx runs, inside the nginx/ mount below. Every nginx
-      # command in this container needs it as -c; scripts/reload.sh reads it here.
+      # command in this container needs it as -c (scripts/reload.sh takes it from
+      # the environment); scripts/fixtures.sh reads the value from this line.
       NGINX_CONF: /etc/nginx/proxy/nginx.conf
     # Directories only, never a single file: a file bind mount stays on the inode
     # it was started with, so after git or an editor replaces the file, nginx

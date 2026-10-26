@@ -2,9 +2,9 @@
 # Run the real proxy and check what it does, not only that its config parses.
 #
 # Starts the nginx service from docker-compose.yml (same image, read-only root,
-# dropped capabilities) with every site example, throwaway certificates and one
-# stub backend that answers for all example container names and echoes the
-# request headers it received. Then checks the behaviour the README promises:
+# dropped capabilities) with the step 2 site examples, throwaway certificates
+# and one stub backend that answers for all example container names and echoes
+# the request headers it received. Then checks the behaviour the README promises:
 # unknown hosts rejected, redirects, ACME webroot, security headers, client
 # address not spoofable, IPv6 clients seen by their own address, dotfiles
 # denied, WebSocket upgrade, login rate limit, and that scripts/reload.sh works
@@ -145,7 +145,8 @@ echo "== IPv6"
 # IPv6 address: the [::] listeners work, and the log shows the client's own
 # address. (The host's ::1 cannot show this: Docker relays loopback through its
 # userland proxy.)
-# Recent Docker prints "invalid IP" for a missing address, so keep only an address.
+# Docker may print "invalid IP" instead of nothing for a missing address, so keep
+# only output shaped like an address.
 ip6_of() { docker inspect -f '{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}' "$1" \
              | grep -oE '^[0-9a-f:]*:[0-9a-f:]*$' || true; }
 nginx_ip6=$(ip6_of "$(compose ps -q nginx)")

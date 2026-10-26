@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Validate the whole configuration with the same nginx image the proxy runs on:
-# copies every examples/*.conf.example into a throwaway sites/ directory, creates
-# throwaway certificates for the example domains and runs `nginx -t`.
+# runs `nginx -t` on every site example together, each with a throwaway
+# certificate, then on the before-certificate example alone, with none.
 # Needs docker on a host with IPv6 enabled in the kernel (`nginx -t` opens the
 # [::] listeners) and openssl. Used by CI; run it before every commit.
 set -euo pipefail
