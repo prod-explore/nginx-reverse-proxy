@@ -55,8 +55,9 @@ The repository's part is in place: the proxy's network has IPv6 (`enable_ipv6` i
 
 On the host:
 
-1. **Docker Engine 27 or newer** (`docker version`). From 27.0, `ip6tables` is on by default and an IPv6 network created without a subnet gets a unique local `/64`. Older engines need experimental settings and an explicit subnet; upgrade instead.
-2. **`ip6tables` left on.** Nothing is needed in `/etc/docker/daemon.json` unless it turns `ip6tables` off. If it does, set it back, keeping the file's other keys, and run `sudo systemctl restart docker` (this restarts every container on the host):
+1. **IPv6 enabled in the kernel.** It is on by default; a host booted with `ipv6.disable=1` cannot create the proxy's network, and nginx cannot open its `[::]` listeners, so the proxy does not start there. This is a requirement even when no client uses IPv6.
+2. **Docker Engine 27 or newer** (`docker version`). From 27.0, `ip6tables` is on by default and an IPv6 network created without a subnet gets a unique local `/64`. Older engines need experimental settings and an explicit subnet; upgrade instead.
+3. **`ip6tables` left on.** Nothing is needed in `/etc/docker/daemon.json` unless it turns `ip6tables` off. If it does, set it back, keeping the file's other keys, and run `sudo systemctl restart docker` (this restarts every container on the host):
 
    ```json
    {
@@ -65,8 +66,8 @@ On the host:
    ```
 
    Two settings that look related are not needed: `"ipv6": true` applies only to the default `docker0` bridge, which Compose does not use, and `"userland-proxy": false` changes nothing for clients from outside, whose connections already go through `ip6tables` and never reach the userland proxy.
-3. **A public IPv6 address, open on 80 and 443.** `ip -6 addr show scope global` lists the host's addresses; use the one not marked `temporary`. Home routers usually drop unsolicited inbound IPv6: allow TCP 80 and 443 to that address on the router, and in the host's firewall if it runs one.
-4. **An AAAA record** for every name, next to its A record. Let's Encrypt validates over IPv6 when an AAAA record exists, so add it only once step 3 works, or issuing and renewal can fail.
+4. **A public IPv6 address, open on 80 and 443.** `ip -6 addr show scope global` lists the host's addresses; use the one not marked `temporary`. Home routers usually drop unsolicited inbound IPv6: allow TCP 80 and 443 to that address on the router, and in the host's firewall if it runs one.
+5. **An AAAA record** for every name, next to its A record. Let's Encrypt validates over IPv6 when an AAAA record exists, so add it only once step 4 works, or issuing and renewal can fail.
 
 A proxy that already ran before IPv6 was enabled keeps its IPv4-only network until the network is recreated. That stops every site for a few seconds:
 

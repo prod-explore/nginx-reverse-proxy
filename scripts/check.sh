@@ -2,7 +2,8 @@
 # Validate the whole configuration with the same nginx image the proxy runs on:
 # copies every examples/*.conf.example into a throwaway sites/ directory, creates
 # throwaway certificates for the example domains and runs `nginx -t`.
-# Needs docker and openssl. Used by CI; run it before every commit.
+# Needs docker on a host with IPv6 enabled in the kernel (`nginx -t` opens the
+# [::] listeners) and openssl. Used by CI; run it before every commit.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
