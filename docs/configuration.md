@@ -42,13 +42,13 @@ Access logs go to stdout and errors to stderr, so `docker logs` and `docker comp
 
 | Zone | Key | Rate | Applied in the examples as |
 | --- | --- | --- | --- |
-| `perip` | client address | 20 requests/s | `limit_req zone=perip burst=60 nodelay` |
-| `login` | client address | 5 requests/min | `limit_req zone=login burst=5 nodelay` on `/api/login` |
-| `connperip` | client address | concurrent connections (with HTTP/2, concurrent requests) | `limit_conn connperip 50` (200 for streaming) |
+| `perip` | client | 20 requests/s | `limit_req zone=perip burst=60 nodelay` |
+| `login` | client | 5 requests/min | `limit_req zone=login burst=5 nodelay` on `/api/login` |
+| `connperip` | client | concurrent connections (with HTTP/2, concurrent requests) | `limit_conn connperip 50` (200 for streaming) |
 
 With `nodelay`, a burst is answered at once and the next request over the limit gets `429`. On `/api/login` that is six requests in a row, then `429` until the rate frees a slot.
 
-The key is `$binary_remote_addr`, the TCP peer: an IPv4 address, or a full 128-bit IPv6 address (see [IPv6](operations.md#ipv6) for why nginx sees the real one). See the [known limits](../README.md#known-limits) for what that means behind a CDN.
+The key is `$limit_key`, built from the TCP peer: the IPv4 address, or for IPv6 the `/64` the address belongs to. An IPv6 client, a phone on mobile data for one, usually holds a whole `/64` and can switch addresses within it, so a per-address key would let it multiply every limit. nginx sees the real IPv6 address because the proxy's network has IPv6 (see [IPv6](operations.md#ipv6)). See the [known limits](../README.md#known-limits) for what that means behind a CDN.
 
 ## Snippets
 

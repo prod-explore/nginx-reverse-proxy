@@ -14,7 +14,7 @@ nginx and certbot in Docker Compose, for serving several containerized web apps 
 - **A client address the backend can trust.** `X-Forwarded-For` and `X-Real-IP` come from the TCP connection. Whatever the client sent in `X-Forwarded-For`, `Forwarded` or `Proxy` (httpoxy) never reaches the backend.
 - **No dotfiles.** Requests for paths such as `/.git/config` or `/.env` get `403` from the proxy, whatever the backend would have answered.
 - **IPv4 and IPv6 clients, each by its own address.** The proxy's network has IPv6, so Docker hands IPv6 connections to nginx directly instead of relaying them; logs, rate limits and `X-Forwarded-For` see the real client address over both protocols.
-- **Per-IP limits.** Request rate and concurrent connections per address, a stricter zone for login endpoints, `429` when exceeded.
+- **Per-client limits.** Request rate and concurrent connections per IPv4 address or IPv6 `/64`, a stricter zone for login endpoints, `429` when exceeded.
 - **WebSockets and server-sent events.** Upgrade requests are passed on for every site; a streaming variant turns off buffering and allows one-hour timeouts.
 - **Backends resolved per request.** A backend that is down, or not created yet, does not keep nginx from starting; only its own site fails until it is back.
 - **Certificates renew without intervention.** certbot checks twice a day; nginx reloads every 6 hours to pick up renewed files.
@@ -166,7 +166,7 @@ Only nginx is reachable from outside, on ports 80 and 443. Backends publish no p
 - **Response headers.** The proxy sets the headers that do not depend on the application. `Content-Security-Policy` is left to the application, which knows what it loads.
 - **Containers.** nginx runs with a read-only root filesystem, `tmpfs` for its scratch directories, all capabilities dropped except `NET_BIND_SERVICE`, `CHOWN`, `SETUID` and `SETGID`, `no-new-privileges`, and memory, process and log-size limits. Its health endpoint listens on the container's loopback only.
 
-There is no web application firewall, no authentication layer and no protection against floods larger than per-address limits can absorb. The full model, threat by threat with the file that handles each, is in [docs/security-model.md](docs/security-model.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
+There is no web application firewall, no authentication layer and no protection against floods larger than per-client limits can absorb. The full model, threat by threat with the file that handles each, is in [docs/security-model.md](docs/security-model.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## When things fail
 
