@@ -1,9 +1,12 @@
-# STEP 2, variant for server-sent events, long polling and WebSockets: no buffering,
-# long timeouts. Same as site.conf.example except the two lines marked (*).
+# Step 2, variant for server-sent events, long polling and WebSockets: no
+# buffering, long timeouts. Same as site.conf.example except the two lines
+# marked (*).
 #
-# The site. Replace every "stream.example.com" with your domain and
-# "stream-app:8080" with <container name>:<port> of the backend (reachable from one of the
-# networks listed in docker-compose.override.yml).
+#   cp examples/site-streaming.conf.example sites/<domain>.conf
+#
+# Replace every "stream.example.com" with the domain and "stream-app:8080" with
+# <container name>:<port> of the backend (reachable from one of the networks
+# listed in docker-compose.override.yml), then run scripts/reload.sh.
 
 server {
     listen 80;

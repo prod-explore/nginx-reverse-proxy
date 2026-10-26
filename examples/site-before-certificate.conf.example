@@ -1,0 +1,21 @@
+# Step 1 of every site, before its certificate exists. nginx refuses to load a
+# site whose certificate file is missing, so this file serves only the ACME
+# challenge on port 80, which lets certbot issue the certificate.
+#
+#   cp examples/site-before-certificate.conf.example sites/<domain>.conf
+#
+# Replace "app.example.com" with the domain, run scripts/reload.sh and issue the
+# certificate (README, step 4). Then copy one of the site*.conf.example files
+# over it (step 2).
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name app.example.com;
+
+    include snippets/acme-challenge.conf;
+
+    location / {
+        return 404;
+    }
+}

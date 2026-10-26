@@ -54,13 +54,12 @@ The script starts the proxy from `docker-compose.yml` with every site in [`examp
 
 You need a host with Docker Engine 27 or newer and Compose v2, ports 80 and 443 reachable from the internet, and a DNS record for your domain that points to the host. IPv6 needs a few host-side steps, listed in [operations](docs/operations.md#ipv6). [[Q2: Which architectures have you run it on (amd64, arm64 / Raspberry Pi)? I will state only what you confirm.]]
 
-**1. Clone and set three variables.** The rest of the commands use them.
+**1. Clone and set two variables.** The rest of the commands use them.
 
 ```sh
 git clone https://github.com/prod-explore/nginx-reverse-proxy.git
 cd nginx-reverse-proxy
 DOMAIN=app.example.com    # its DNS record points to this host
-BACKEND=app:80            # <container name>:<port> of the app
 EMAIL=you@example.com     # for the Let's Encrypt account
 ```
 
@@ -85,19 +84,29 @@ EOF
 docker compose up -d
 ```
 
-**4. Get a certificate.** nginx will not load a site whose certificate file does not exist yet, so a site starts with a bootstrap file that serves only the ACME challenge on port 80. The certbot service's entrypoint is the renewal loop, so a one-off command overrides it.
+**4. Get a certificate.** nginx will not load a site whose certificate file does not exist yet, so every site starts as a copy of [`site-before-certificate.conf.example`](examples/site-before-certificate.conf.example), which serves only the ACME challenge on port 80. Copy it, and in the copy replace `app.example.com` with your domain:
 
 ```sh
-sed "s/app.example.com/$DOMAIN/g" examples/bootstrap.conf.example > "sites/$DOMAIN.conf"
+cp examples/site-before-certificate.conf.example "sites/$DOMAIN.conf"
+```
+
+Then load it and issue the certificate. The certbot service's entrypoint is the renewal loop, so a one-off command overrides it.
+
+```sh
 scripts/reload.sh
 docker compose run --rm --entrypoint certbot certbot certonly --webroot -w /var/www/certbot \
   -d "$DOMAIN" --email "$EMAIL" --agree-tos --no-eff-email
 ```
 
-**5. Replace the bootstrap file with the full site.**
+**5. Replace it with the full site.** Copy [`site.conf.example`](examples/site.conf.example) over the same file, and in the copy replace every `app.example.com` with your domain and `app:3000` with the app's `<container name>:<port>` (`app:80` for the placeholder app):
 
 ```sh
-sed -e "s/app.example.com/$DOMAIN/g" -e "s/app:3000/$BACKEND/" examples/site.conf.example > "sites/$DOMAIN.conf"
+cp examples/site.conf.example "sites/$DOMAIN.conf"
+```
+
+After editing the copy, load it and check:
+
+```sh
 scripts/reload.sh
 curl -I "https://$DOMAIN"
 ```
@@ -131,7 +140,7 @@ flowchart LR
 | [`nginx/nginx.conf`](nginx/nginx.conf) | http-wide defaults every site inherits: logging, client timeouts, body size, gzip, rate-limit zones, Docker's DNS resolver |
 | [`nginx/snippets/`](nginx/snippets) | pieces a site includes: TLS, security headers, proxy headers, timeouts, streaming, ACME challenge |
 | [`nginx/conf.d/00-default.conf`](nginx/conf.d/00-default.conf) | the catch-all servers for unknown hosts and the loopback health endpoint |
-| [`examples/`](examples) | site templates; CI validates and runs every one of them |
+| [`examples/`](examples) | site templates to copy into `sites/`; CI validates and runs every one of them |
 | `sites/*.conf` | your sites; gitignored, they stay on the server |
 | `certs/` | Let's Encrypt state and the ACME webroot; gitignored |
 | [`scripts/`](scripts) | `reload.sh` (test, then reload the running proxy), `check.sh` (`nginx -t` on everything) and `smoke-test.sh` |
@@ -184,7 +193,7 @@ There is no web application firewall, no authentication layer and no protection 
 | Command | What it checks |
 | --- | --- |
 | `shellcheck -x scripts/*.sh` | the scripts |
-| `scripts/check.sh` | `nginx -t` with the image from `docker-compose.yml`: every example together, then the bootstrap example alone, with throwaway certificates |
+| `scripts/check.sh` | `nginx -t` with the image from `docker-compose.yml`: every example together, then the before-certificate example alone, with throwaway certificates |
 | `docker compose config -q` | the Compose file, alone and with `-f docker-compose.yml -f docker-compose.override.example.yml` |
 | `scripts/smoke-test.sh` | the running proxy, from the outside |
 

@@ -1,6 +1,6 @@
 # Operations
 
-Day-to-day tasks on a running proxy. Every command runs from the repository directory on the server. `DOMAIN`, `BACKEND` and `EMAIL` are the variables from the [deployment steps](../README.md#deploy-on-a-server).
+Day-to-day tasks on a running proxy. Every command runs from the repository directory on the server. `DOMAIN` and `EMAIL` are the variables from the [deployment steps](../README.md#deploy-on-a-server).
 
 After any change to `sites/` or `nginx/`, test and reload:
 
@@ -14,31 +14,22 @@ nginx runs with `-c "$NGINX_CONF"` (set in `docker-compose.yml`). A bare `nginx 
 
 ## Adding a site
 
-Every site starts with the bootstrap file and a certificate (steps 4 and 5 of the [deployment](../README.md#deploy-on-a-server)). Only the file that replaces the bootstrap file differs.
+A site is enabled by copying an example into `sites/` and editing the copy; `sites/*.conf` is gitignored, so a `git pull` never touches it. Every site goes through two files (steps 4 and 5 of the [deployment](../README.md#deploy-on-a-server)): first the before-certificate file, until certbot has issued the certificate, then the full site copied over it.
 
 | Example | Use it for |
 | --- | --- |
-| [`site.conf.example`](../examples/site.conf.example) | one backend |
-| [`site-frontend-and-api.conf.example`](../examples/site-frontend-and-api.conf.example) | a frontend and an API in two containers, with a stricter limit on `/api/login` |
-| [`site-streaming.conf.example`](../examples/site-streaming.conf.example) | WebSockets, server-sent events, long polling |
+| [`site-before-certificate.conf.example`](../examples/site-before-certificate.conf.example) | step 1 of every site: only the ACME challenge, until the certificate exists |
+| [`site.conf.example`](../examples/site.conf.example) | step 2: one backend |
+| [`site-frontend-and-api.conf.example`](../examples/site-frontend-and-api.conf.example) | step 2: a frontend and an API in two containers, with a stricter limit on `/api/login` |
+| [`site-streaming.conf.example`](../examples/site-streaming.conf.example) | step 2: WebSockets, server-sent events, long polling |
 
-A frontend and an API:
-
-```sh
-WEB=shop-web:80       # <container name>:<port> of the frontend
-API=shop-api:3000     # <container name>:<port> of the API
-sed -e "s/shop.example.com/$DOMAIN/g" -e "s/shop-web:80/$WEB/" -e "s/shop-api:3000/$API/" \
-  examples/site-frontend-and-api.conf.example > "sites/$DOMAIN.conf"
-```
-
-A streaming backend:
+For example, a frontend and an API, once the certificate exists:
 
 ```sh
-sed -e "s/stream.example.com/$DOMAIN/g" -e "s/stream-app:8080/$BACKEND/" \
-  examples/site-streaming.conf.example > "sites/$DOMAIN.conf"
+cp examples/site-frontend-and-api.conf.example "sites/$DOMAIN.conf"
 ```
 
-Then test and reload. The API example passes `/api/...` to the API unchanged; the API must serve its routes under `/api`.
+Each example's header names the placeholders to replace in the copy (the domain and each backend's `<container name>:<port>`). Then run `scripts/reload.sh`. The API example passes `/api/...` to the API unchanged; the API must serve its routes under `/api`.
 
 ## Adding a backend network
 
@@ -89,7 +80,7 @@ To verify, open a site from a device outside your network over IPv6 only, such a
 
 ## Certificates
 
-**Several names on one certificate.** Pass each name with `-d`. certbot stores the certificate under the first name, so the paths in the site file stay `live/$DOMAIN/...`; list every name in each `server_name` line of the site file, and in the bootstrap file before issuing.
+**Several names on one certificate.** Pass each name with `-d`. certbot stores the certificate under the first name, so the paths in the site file stay `live/$DOMAIN/...`; list every name in each `server_name` line of the site file, and in the before-certificate file before issuing.
 
 ```sh
 docker compose run --rm --entrypoint certbot certbot certonly --webroot -w /var/www/certbot \
@@ -164,7 +155,7 @@ The health check requests `http://127.0.0.1:8081/healthz` inside the container e
 | Symptom | Likely cause |
 | --- | --- |
 | `curl: (52) Empty reply from server` on port 80, or a TLS handshake failure (`unrecognized name`) on 443 | The catch-all server answered: no site file has this name in `server_name`, or it was not reloaded. Note that `nginx -s reload` returns before the new workers are up; a request sent in the same instant can still meet the old configuration. |
-| `nginx -t`: `cannot load certificate "/etc/letsencrypt/live/..."` | The site file names a certificate that does not exist yet. Use the bootstrap file until certbot has issued it. |
-| certbot: the challenge fails | The DNS record does not point to this host, port 80 is closed, or the bootstrap file for this name is not loaded. |
+| `nginx -t`: `cannot load certificate "/etc/letsencrypt/live/..."` | The site file names a certificate that does not exist yet. Use a copy of `site-before-certificate.conf.example` until certbot has issued it. |
+| certbot: the challenge fails | The DNS record does not point to this host, port 80 is closed, or the before-certificate file for this name is not loaded. |
 | `502` or `504` from one site | The backend is down, listens on another port, or shares no network with `nginx-proxy`. `docker compose exec nginx wget -q -O - http://<container>:<port>/` tests the path from the proxy. |
 | The container restarts in a loop | nginx cannot load its configuration. `docker compose logs nginx` names the file and line. |

@@ -10,9 +10,9 @@ image=$(sed -n 's|^[[:space:]]*image: \(nginx:[^[:space:]]*\)$|\1|p' docker-comp
 conf=$(sed -n 's|^[[:space:]]*NGINX_CONF: \([^[:space:]]*\)$|\1|p' docker-compose.yml | head -1)
 : "${conf:?could not read NGINX_CONF from docker-compose.yml}"
 
-# make_fixtures DIR: fills DIR/sites with every examples/*.conf.example except the
-# bootstrap one, DIR/certs with a throwaway self-signed certificate for each domain
-# those examples reference, and creates an empty DIR/webroot.
+# make_fixtures DIR: fills DIR/sites with every examples/*.conf.example except
+# site-before-certificate, DIR/certs with a throwaway self-signed certificate for
+# each domain those examples reference, and creates an empty DIR/webroot.
 
 make_fixtures() {
   local dir=$1 f domain
@@ -21,9 +21,9 @@ make_fixtures() {
   for f in examples/*.conf.example; do
     cp "$f" "$dir/sites/$(basename "${f%.example}")"
   done
-  # bootstrap.conf and site.conf both claim app.example.com: the pair is a
-  # before/after, never loaded together.
-  rm "$dir/sites/bootstrap.conf"
+  # site-before-certificate.conf and site.conf both claim app.example.com: the
+  # pair is a before/after, never loaded together.
+  rm "$dir/sites/site-before-certificate.conf"
 
   while read -r domain; do
     mkdir -p "$dir/certs/live/$domain"

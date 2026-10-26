@@ -25,9 +25,9 @@ nginx_t() {
 make_fixtures "$work"
 nginx_t
 
-# The bootstrap example must be valid on its own, before any certificate exists.
+# The before-certificate example must be valid on its own, with no certificate.
 rm -rf "$work/sites"/*.conf "$work/certs"/*
-cp examples/bootstrap.conf.example "$work/sites/bootstrap.conf"
+cp examples/site-before-certificate.conf.example "$work/sites/site-before-certificate.conf"
 chmod -R a+rX "$work"
 nginx_t
 

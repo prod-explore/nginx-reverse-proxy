@@ -1,6 +1,11 @@
-# STEP 2: the site. Replace every "app.example.com" with your domain and
-# "app:3000" with <container name>:<port> of the backend (reachable from one of the
-# networks listed in docker-compose.override.yml).
+# Step 2: a site with one backend, once its certificate exists (until then, use
+# site-before-certificate.conf.example).
+#
+#   cp examples/site.conf.example sites/<domain>.conf
+#
+# Replace every "app.example.com" with the domain and "app:3000" with
+# <container name>:<port> of the backend (reachable from one of the networks
+# listed in docker-compose.override.yml), then run scripts/reload.sh.
 
 server {
     listen 80;
