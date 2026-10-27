@@ -164,7 +164,7 @@ Only nginx is reachable from outside, on ports 80 and 443. Backends publish no p
 - **TLS** follows Mozilla's intermediate profile without DHE: TLS 1.2 and 1.3, ECDHE with AES-GCM or ChaCha20-Poly1305. Session tickets are off. There is no OCSP stapling, because Let's Encrypt certificates no longer name an OCSP responder.
 - **Client address.** The proxy assumes it is the only hop in front of the backend. It overwrites `X-Forwarded-For` with the TCP peer address, so a backend should trust exactly one proxy hop (in Express, `trust proxy` set to `1`).
 - **Response headers.** The proxy sets the headers that do not depend on the application. `Content-Security-Policy` is left to the application, which knows what it loads.
-- **Containers.** nginx runs with a read-only root filesystem, `tmpfs` for its scratch directories, all capabilities dropped except `NET_BIND_SERVICE`, `CHOWN`, `SETUID` and `SETGID`, `no-new-privileges`, and memory, process and log-size limits. Its health endpoint listens on the container's loopback only.
+- **Containers.** nginx runs with a read-only root filesystem, `tmpfs` for its scratch directories, all capabilities dropped except `NET_BIND_SERVICE`, `CHOWN`, `SETUID`, `SETGID` and `DAC_READ_SEARCH` (to read certbot's root-only keys), `no-new-privileges`, and memory, process and log-size limits. Its health endpoint listens on the container's loopback only.
 
 There is no web application firewall, no authentication layer and no protection against floods larger than per-client limits can absorb. The full model, threat by threat with the file that handles each, is in [docs/security-model.md](docs/security-model.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
 

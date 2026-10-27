@@ -37,7 +37,10 @@ services:
     # Hardening: nothing writable but tmpfs, no extra privileges, only the
     # capabilities nginx needs: NET_BIND_SERVICE for ports 80 and 443, SETUID and
     # SETGID for the master to start its workers as the nginx user, CHOWN for the
-    # master to hand its temp directories to that user.
+    # master to hand its temp directories to that user, DAC_READ_SEARCH for the
+    # master to read the certificate keys: certbot writes them as root, mode 0600,
+    # in a root-only directory, and a root process without capabilities cannot
+    # open them.
     read_only: true
     tmpfs:
       - /var/cache/nginx
@@ -46,7 +49,7 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE, CHOWN, SETUID, SETGID]
+    cap_add: [NET_BIND_SERVICE, CHOWN, SETUID, SETGID, DAC_READ_SEARCH]
     mem_limit: 256m
     pids_limit: 256
     logging:

@@ -32,7 +32,7 @@ Only the nginx container publishes ports: 80 and 443 on all host addresses, IPv4
 | Slow clients holding connections (slowloris) | 10 s for headers, 15 s between body reads, 30 s between response writes, bounded header buffers | `nginx.conf` | no |
 | Oversized uploads | 10 MB body limit by default | `nginx.conf`, site examples | no |
 | One compromised backend reaching another | Separate Docker network per backend; only the proxy joins them | [`docker-compose.override.example.yml`](../docker-compose.override.example.yml) | no |
-| A compromised nginx worker taking over the container or host | Read-only root, `tmpfs` scratch space, all capabilities dropped except `NET_BIND_SERVICE`, `CHOWN`, `SETUID`, `SETGID`; `no-new-privileges`; 256 MB memory, 256 processes | [`docker-compose.yml`](../docker-compose.yml) | the reload check runs in this container |
+| A compromised nginx worker taking over the container or host | Read-only root, `tmpfs` scratch space, all capabilities dropped except `NET_BIND_SERVICE`, `CHOWN`, `SETUID`, `SETGID`, `DAC_READ_SEARCH`; `no-new-privileges`; 256 MB memory, 256 processes | [`docker-compose.yml`](../docker-compose.yml) | the reload check runs in this container |
 | Private keys leaking through the repository | `certs/` is gitignored; nginx mounts it read-only | [`.gitignore`](../.gitignore), `docker-compose.yml` | no |
 
 ## TLS details
