@@ -4,7 +4,7 @@
 
 nginx and certbot in Docker Compose, for serving several containerized web apps from one host over HTTPS. Each app stays on its own Docker network and publishes no ports. nginx joins those networks, terminates TLS with Let's Encrypt certificates and routes by host name. On every push to `main` and every pull request, CI starts the proxy and checks its behaviour from the outside.
 
-Runs on my Raspberry Pi 5 since September 2025, in front of all my self-hosted apps.
+Runs on my Raspberry Pi 5 since September 2025, in front of all my self-hosted apps; this repository is the cleaned-up 2026 version of that setup.
 
 ## What it does
 
