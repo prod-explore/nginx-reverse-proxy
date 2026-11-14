@@ -57,7 +57,7 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   certbot:
-    image: certbot/certbot:v5.8.0
+    image: certbot/certbot:v5.10.0
     container_name: certbot
     restart: unless-stopped
     # Checks twice a day; certbot renews only the certificates that are close to
